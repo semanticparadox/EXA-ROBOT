@@ -12,14 +12,14 @@ pub struct SshClient;
 impl client::Handler for SshClient {
     type Error = anyhow::Error;
 
-    async fn check_server_key<'a>(
-        &'a mut self,
-        _server_public_key: &'a russh_keys::key::PublicKey,
-    ) -> Result<bool, Self::Error> {
+    async fn check_server_key(
+        self,
+        _server_public_key: &russh_keys::key::PublicKey,
+    ) -> Result<(Self, bool), Self::Error> {
         // Warning: This disables Host Key verification!
         // Necessary for dynamic nodes where we don't know the key in advance.
         debug!("Accepting unknown server key (dynamic node context)");
-        Ok(true)
+        Ok((self, true))
     }
 }
 
