@@ -42,7 +42,17 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     let args = Args::parse();
 
-    info!("🔗 Panel URL: {}", args.panel_url);
+    // Normalize URL
+    let mut panel_url = args.panel_url.clone();
+    if !panel_url.starts_with("http://") && !panel_url.starts_with("https://") {
+        panel_url = format!("https://{}", panel_url);
+    }
+    // Remove trailing slash
+    if panel_url.ends_with('/') {
+        panel_url.pop();
+    }
+
+    info!("🔗 Panel URL: {}", panel_url);
     info!("🔑 Token: {}...", &args.token[0..4.min(args.token.len())]);
     info!("📁 Config Path: {}", args.config_path);
 
@@ -61,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
         let uptime = start_time.elapsed().as_secs();
         
         // Send Heartbeat
-        match send_heartbeat(&client, &args, uptime, &state).await {
+        match send_heartbeat(&client, &panel_url, &args.token, uptime, &state).await {
             Ok(resp) => {
                 failures = 0;
                 info!("💓 Heartbeat OK. Action: {:?}", resp.action);
@@ -70,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
                 match resp.action {
                     exarobot_shared::api::AgentAction::UpdateConfig => {
                         info!("🔄 Config update requested");
-                        if let Err(e) = update_config(&client, &args, &mut state).await {
+                        if let Err(e) = update_config(&client, &panel_url, &args.token, &args.config_path, &mut state).await {
                             error!("Failed to update config: {}", e);
                         }
                     },
@@ -89,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
         
         // Periodic config check (every 10th heartbeat = ~100 seconds)
         if uptime % 100 < 10 {
-            if let Err(e) = check_and_update_config(&client, &args, &mut state).await {
+            if let Err(e) = check_and_update_config(&client, &panel_url, &args.token, &args.config_path, &mut state).await {
                 error!("Config check failed: {}", e);
             }
         }
@@ -100,11 +110,12 @@ async fn main() -> anyhow::Result<()> {
 
 async fn send_heartbeat(
     client: &reqwest::Client,
-    args: &Args,
+    panel_url: &str,
+    token: &str,
     uptime: u64,
     state: &AgentState,
 ) -> anyhow::Result<HeartbeatResponse> {
-    let url = format!("{}/api/v2/node/heartbeat", args.panel_url);
+    let url = format!("{}/api/v2/node/heartbeat", panel_url);
     
     let payload = HeartbeatRequest {
         version: "0.2.0".to_string(),
@@ -116,7 +127,7 @@ async fn send_heartbeat(
     };
     
     let resp = client.post(&url)
-        .header("Authorization", format!("Bearer {}", args.token))
+        .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
         .await?;
@@ -130,13 +141,15 @@ async fn send_heartbeat(
 
 async fn check_and_update_config(
     client: &reqwest::Client,
-    args: &Args,
+    panel_url: &str,
+    token: &str,
+    config_path: &str,
     state: &mut AgentState,
 ) -> anyhow::Result<()> {
-    let url = format!("{}/api/v2/node/config", args.panel_url);
+    let url = format!("{}/api/v2/node/config", panel_url);
     
     let resp = client.get(&url)
-        .header("Authorization", format!("Bearer {}", args.token))
+        .header("Authorization", format!("Bearer {}", token))
         .send()
         .await?;
 
@@ -153,7 +166,7 @@ async fn check_and_update_config(
             &config_resp.hash);
         
         // Save new config
-        save_config(&args.config_path, &config_resp.content).await?;
+        save_config(config_path, &config_resp.content).await?;
         state.current_hash = Some(config_resp.hash);
         
         // Restart sing-box
@@ -169,10 +182,12 @@ async fn check_and_update_config(
 
 async fn update_config(
     client: &reqwest::Client,
-    args: &Args,
+    panel_url: &str,
+    token: &str,
+    config_path: &str,
     state: &mut AgentState,
 ) -> anyhow::Result<()> {
-    check_and_update_config(client, args, state).await
+    check_and_update_config(client, panel_url, token, config_path, state).await
 }
 
 async fn load_current_hash(config_path: &str) -> Option<String> {

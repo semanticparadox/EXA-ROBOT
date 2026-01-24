@@ -151,7 +151,7 @@ EOF
     systemctl restart exarobot-panel
     
     log_success "Panel installed and started"
-    log_info "Access at: https://$DOMAIN$ADMIN_PATH"
+    log_info "Access at: https://$DOMAIN$ADMIN_PATH/login"
     log_info "Default credentials: admin / admin123"
     log_warn "CHANGE PASSWORD IMMEDIATELY!"
 }
@@ -160,7 +160,21 @@ install_agent() {
     log_info "=== Installing Agent ==="
     
     # Prompt for configuration
-    read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL </dev/tty
+    while true; do
+        read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL </dev/tty
+        # Remove trailing slash
+        PANEL_URL=${PANEL_URL%/}
+        
+        # Add protocol if missing
+        if [[ ! "$PANEL_URL" =~ ^http(s)?:// ]]; then
+             PANEL_URL="https://$PANEL_URL"
+        fi
+        
+        if [[ -n "$PANEL_URL" ]]; then
+            break
+        fi
+        log_error "Panel URL cannot be empty"
+    done
     read -p "Enter Node Token (from panel): " NODE_TOKEN </dev/tty
     
     # Build agent
