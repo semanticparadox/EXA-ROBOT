@@ -222,26 +222,41 @@ pub async fn save_plan_bindings(
 
     info!("Updating bindings for plan {}: {:?}", plan_id, inbound_ids);
 
-    let mut tx = state.pool.begin().await.unwrap();
+    let mut tx = match state.pool.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            error!("Failed to start transaction: {}", e);
+            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Database Transaction Error").into_response();
+        }
+    };
 
     // 1. Clear existing
-    sqlx::query("DELETE FROM plan_inbounds WHERE plan_id = ?")
+    if let Err(e) = sqlx::query("DELETE FROM plan_inbounds WHERE plan_id = ?")
         .bind(plan_id)
         .execute(&mut *tx)
-        .await
-        .unwrap();
+        .await 
+    {
+         error!("Failed to delete existing bindings for plan {}: {}", plan_id, e);
+         return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to clear existing bindings").into_response();
+    }
 
     // 2. Insert new
     for inbound_id in inbound_ids {
-        sqlx::query("INSERT INTO plan_inbounds (plan_id, inbound_id) VALUES (?, ?)")
+        if let Err(e) = sqlx::query("INSERT INTO plan_inbounds (plan_id, inbound_id) VALUES (?, ?)")
             .bind(plan_id)
             .bind(inbound_id)
             .execute(&mut *tx)
-            .await
-            .unwrap();
+            .await 
+        {
+            error!("Failed to insert binding plan={} inbound={}: {}", plan_id, inbound_id, e);
+            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to insert new bindings").into_response();
+        }
     }
 
-    tx.commit().await.unwrap();
+    if let Err(e) = tx.commit().await {
+         error!("Failed to commit bindings transaction: {}", e);
+         return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Transaction Commit Failed").into_response();
+    }
 
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
