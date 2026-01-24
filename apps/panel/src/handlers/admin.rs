@@ -532,7 +532,21 @@ pub async fn get_node_edit(
         .fetch_one(&state.pool)
         .await {
             Ok(n) => n,
-            Err(_) => return (axum::http::StatusCode::NOT_FOUND, "Node not found").into_response(),
+            Err(e) => {
+                error!("Failed to fetch node for edit: {}", e);
+                return Html(format!(r#"
+                    <header>
+                        <a href="#close" aria-label="Close" class="close" onclick="document.getElementById('edit-node-modal').close()"></a>
+                        Error
+                    </header>
+                    <div style="padding: 1rem; color: #ff6b6b;">
+                        <strong>Failed to load node:</strong><br>
+                        {}<br><br>
+                        <em>Please run database migrations.</em>
+                    </div>
+                    <footer><button onclick="document.getElementById('edit-node-modal').close()">Close</button></footer>
+                "#, e)).into_response();
+            }
         };
 
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());

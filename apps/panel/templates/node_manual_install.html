@@ -6,8 +6,7 @@
 <div>
     <p><strong>Quick One-Liner (Remnawave-style)</strong></p>
     <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-        <input type="text" id="one-liner"
-            value="bash <(curl -fsSL ${window.location.origin}/admin/nodes/{{ node.id }}/raw-install)" readonly
+        <input type="text" id="one-liner" value="" readonly
             style="flex-grow: 1; font-family: monospace; font-size: 0.85rem;">
         <button class="outline" onclick="
             const liner = document.getElementById('one-liner');
@@ -22,7 +21,9 @@
 </div>
 <script>
     // Dynamically update the origin in the input value
-    document.getElementById('one-liner').value = `bash <(curl -fsSL ${window.location.origin}/admin/nodes/{{ node.id }}/raw-install)`;
+    const origin = window.location.origin;
+    const token = "{{ node.join_token.clone().unwrap_or_default() }}";
+    document.getElementById('one-liner').value = `curl -fsSL https://raw.githubusercontent.com/semanticparadox/EXA-ROBOT/main/scripts/install.sh | sudo bash -s -- --role agent --panel "${origin}" --token "${token}"`;
 </script>
 <footer>
     <button class="secondary" onclick="
