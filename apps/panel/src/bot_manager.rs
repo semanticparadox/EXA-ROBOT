@@ -34,7 +34,7 @@ impl BotManager {
         }
 
         info!("Starting new bot instance...");
-        let bot = Bot::new(token);
+        let bot = Bot::new(token.clone());
         
         // Store bot clone for notifications
         let mut bot_lock = self.current_bot.lock().await;

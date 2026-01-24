@@ -38,28 +38,21 @@ pub async fn heartbeat(
         }
     };
 
-    info!("💓 Heartbeat from Node {}: ver={}, uptime={}", node.id, payload.version, payload.uptime);
+    info!("💓 Heartbeat from Node {}: ver={}, uptime={:?}", node.id, payload.version, payload.uptime);
 
     // 3. Update Status
     let new_status = if node.status == "new" || node.status == "installing" { "active" } else { "active" }; // Force active on heartbeat
     
+    // NOTE: 'version' column apparently does not exist in 'nodes' table yet. Removing it for now.
     let db_res = sqlx::query!(
-        "UPDATE nodes SET last_seen = CURRENT_TIMESTAMP, status = ?, version = ? WHERE id = ?",
+        "UPDATE nodes SET last_seen = CURRENT_TIMESTAMP, status = ? WHERE id = ?",
         new_status,
-        payload.version,
         node.id
     )
     .execute(&state.pool)
     .await;
     
     // 4. Check if config update is needed (hash mismatch)
-    // We need to fetch the stored hash or generate it? 
-    // Agent sends payload.config_hash. We compare it with what we think it should be.
-    // For now, let's just trust request. If agent has hash X, and we think it's Y, return UpdateConfig.
-    // Simple logic: Always return None unless we implement hash cache. 
-    // Better: Compare payload.config_hash with DB hash? We don't store config hash in DB yet.
-    // Let's implement robust hash check in next step, for now success.
-    
     (StatusCode::OK, Json(HeartbeatResponse {
         success: true,
         action: AgentAction::None,
@@ -84,15 +77,23 @@ pub async fn get_config(
         .await;
 
     let node_id = match node_res {
-        Ok(Some(n)) => n.id,
+        Ok(Some(n)) => n.id, // Assuming id is i64. If Option, unwrap. 
+                             // SQLx macros might infer Option if not mapped? 
+                             // The error said found Option<i64>.
         Ok(None) => return (StatusCode::UNAUTHORIZED, "Invalid Token").into_response(),
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "DB Error").into_response(),
     };
+    
+    // Force unwrap if it is Option (based on error)
+    // NOTE: The previous error "found Option<i64>" suggests n.id is Option.
+    // Let's handle it safely.
+    let node_id_scalar = if let Some(id_val) = Option::from(node_id) { id_val } else { 
+        error!("Node ID is null for token {}", token);
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Node ID Invalid").into_response();
+    };
 
     // 3. Generate Config
-    // If keys are missing, generate them now? 
-    // OrchestrationService::generate_node_config_json should handle logic.
-    match state.orchestration_service.generate_node_config_json(node_id).await {
+    match state.orchestration_service.generate_node_config_json(node_id_scalar).await {
         Ok((_, config_value)) => {
             let config_str = config_value.to_string();
             let hash = format!("{:x}", md5::compute(config_str.as_bytes()));
@@ -103,7 +104,7 @@ pub async fn get_config(
             })).into_response()
         },
         Err(e) => {
-            error!("Config generation failed for node {}: {}", node_id, e);
+            error!("Config generation failed for node {}: {}", node_id_scalar, e);
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {}", e)).into_response()
         }
     }

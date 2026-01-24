@@ -62,7 +62,7 @@ pub async fn run_bot(bot: Bot, mut shutdown_signal: tokio::sync::broadcast::Rece
     info!("Starting refined bot dispatcher...");
     
     // 0. Safety Net for Panics
-    let prev_hook = std::panic::take_hook();
+    let _prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|info| {
         error!("CRITICAL BOT PANIC: {:?}", info);
     }));
@@ -70,7 +70,7 @@ pub async fn run_bot(bot: Bot, mut shutdown_signal: tokio::sync::broadcast::Rece
     // 1. Connectivity Check
     info!("Bot identity check...");
     match bot.get_me().await {
-        Ok(me) => info!("Bot connected as: @{}", me.username.unwrap_or("unknown".into())),
+        Ok(me) => info!("Bot connected as: @{}", me.username.clone().unwrap_or("unknown".into())),
         Err(e) => {
             error!("CRITICAL: Bot failed to connect to Telegram: {}", e);
             // Don't crash immediately, maybe it's a temp network issue? 
