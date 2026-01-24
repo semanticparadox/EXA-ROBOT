@@ -68,9 +68,10 @@ clone_repository() {
     INSTALL_DIR="/opt/exarobot"
     
     if [ -d "$INSTALL_DIR/.git" ]; then
-        log_info "Repository exists, pulling latest..."
+        log_info "Repository exists, resetting to latest..."
         cd "$INSTALL_DIR"
-        git pull
+        git fetch --all
+        git reset --hard origin/main
     else
         log_info "Cloning repository..."
         git clone "$REPO_URL" "$INSTALL_DIR"
