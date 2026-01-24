@@ -84,8 +84,8 @@ install_panel() {
     log_info "=== Installing Panel ==="
     
     # Prompt for configuration
-    read -p "Enter server domain (e.g. panel.example.com): " DOMAIN
-    read -p "Enter admin path [/admin]: " ADMIN_PATH
+    read -p "Enter server domain (e.g. panel.example.com): " DOMAIN </dev/tty
+    read -p "Enter admin path [/admin]: " ADMIN_PATH </dev/tty
     ADMIN_PATH=${ADMIN_PATH:-/admin}
     
     # Build panel
@@ -146,8 +146,8 @@ install_agent() {
     log_info "=== Installing Agent ==="
     
     # Prompt for configuration
-    read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL
-    read -p "Enter Node Token (from panel): " NODE_TOKEN
+    read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL </dev/tty
+    read -p "Enter Node Token (from panel): " NODE_TOKEN </dev/tty
     
     # Build agent
     log_info "Building agent..."
@@ -233,7 +233,7 @@ main() {
     echo "1) Panel only"
     echo "2) Agent only"
     echo "3) Both Panel and Agent"
-    read -p "Choice [1-3]: " CHOICE
+    read -p "Choice [1-3]: " CHOICE </dev/tty
     
     case $CHOICE in
         1)
