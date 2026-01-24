@@ -1482,13 +1482,16 @@ pub async fn toggle_node_enable(
     info!("Request to toggle enable status for node ID: {}", id);
     
     // Fetch current status
-    let enabled: bool = match sqlx::query_scalar("SELECT is_enabled FROM nodes WHERE id = ?")
+    // Use unchecked query to avoid build failure if migration not applied
+    let enabled_res: Result<bool, sqlx::Error> = sqlx::query_scalar("SELECT is_enabled FROM nodes WHERE id = ?")
         .bind(id)
         .fetch_one(&state.pool)
-        .await {
-            Ok(e) => e,
-            Err(_) => return (axum::http::StatusCode::NOT_FOUND, "Node not found").into_response(),
-        };
+        .await;
+
+    let enabled = match enabled_res {
+        Ok(e) => e,
+        Err(_) => return (axum::http::StatusCode::NOT_FOUND, "Node not found").into_response(),
+    };
 
     let new_status = !enabled;
     

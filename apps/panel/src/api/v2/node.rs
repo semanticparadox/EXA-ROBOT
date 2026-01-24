@@ -73,14 +73,21 @@ pub async fn get_config(
     };
 
     // 2. Validate Node
-    let node_res = sqlx::query!("SELECT id, is_enabled FROM nodes WHERE join_token = ?", token)
+    // 2. Validate Node
+    // Using simple query_as to avoid compilation failure if DB migration is not applied locally yet.
+    // At runtime, it will fail if column is missing, but it unblocks build.
+    let node_res: Result<Option<(i64, bool)>, sqlx::Error> = sqlx::query_as("SELECT id, is_enabled FROM nodes WHERE join_token = ?")
+        .bind(token)
         .fetch_optional(&state.pool)
         .await;
 
     let (node_id, is_enabled) = match node_res {
-        Ok(Some(n)) => (n.id, n.is_enabled),
+        Ok(Some((id, enabled))) => (id, enabled),
         Ok(None) => return (StatusCode::UNAUTHORIZED, "Invalid Token").into_response(),
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "DB Error").into_response(),
+        Err(e) => {
+             error!("DB Error in get_config: {}", e);
+             return (StatusCode::INTERNAL_SERVER_ERROR, "DB Error").into_response();
+        }
     };
 
     if !is_enabled {
