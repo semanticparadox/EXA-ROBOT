@@ -9,10 +9,10 @@
             <h2>Manage Access: {{ plan.name }}</h2>
             <small>Select which inbounds are available to users on this plan.</small>
         </div>
-        <a href="/admin/plans" role="button" class="secondary outline">Back to Plans</a>
+        <a href="{{ admin_path }}/plans" role="button" class="secondary outline">Back to Plans</a>
     </div>
 
-    <form method="POST" action="/admin/plans/{{ plan.id }}/bindings">
+    <form method="POST" action="{{ admin_path }}/plans/{{ plan.id }}/bindings">
         {% for node_group in bindings %}
         <article>
             <header>

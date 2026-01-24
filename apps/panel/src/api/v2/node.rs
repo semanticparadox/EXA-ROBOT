@@ -73,17 +73,19 @@ pub async fn get_config(
     };
 
     // 2. Validate Node
-    let node_res = sqlx::query!("SELECT id FROM nodes WHERE join_token = ?", token)
+    let node_res = sqlx::query!("SELECT id, is_enabled FROM nodes WHERE join_token = ?", token)
         .fetch_optional(&state.pool)
         .await;
 
-    let node_id = match node_res {
-        Ok(Some(n)) => n.id, // Assuming id is i64. If Option, unwrap. 
-                             // SQLx macros might infer Option if not mapped? 
-                             // The error said found Option<i64>.
+    let (node_id, is_enabled) = match node_res {
+        Ok(Some(n)) => (n.id, n.is_enabled),
         Ok(None) => return (StatusCode::UNAUTHORIZED, "Invalid Token").into_response(),
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "DB Error").into_response(),
     };
+
+    if !is_enabled {
+        return (StatusCode::FORBIDDEN, "Node is disabled").into_response();
+    }
     
     // Force unwrap if it is Option (based on error)
     // NOTE: The previous error "found Option<i64>" suggests n.id is Option.

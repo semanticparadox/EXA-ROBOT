@@ -99,12 +99,20 @@ pub async fn run_bot(bot: Bot, mut shutdown_signal: tokio::sync::broadcast::Rece
 
                     let user_name = msg.from.as_ref().map(|u| u.full_name()).unwrap_or_else(|| "User".to_string());
                     // Upsert returns User
-                    state.store_service.upsert_user(
+                    let user_res_inner = state.store_service.upsert_user(
                         tg_id, 
                         msg.from.as_ref().and_then(|u| u.username.as_deref()),
                         Some(&user_name),
                         referrer_id
-                    ).await.ok()
+                    ).await;
+
+                    match user_res_inner {
+                        Ok(u) => Some(u),
+                        Err(e) => {
+                            error!("Failed to upsert user on /start: {}", e);
+                            None
+                        }
+                    }
                 } else {
                     state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten()
                 };

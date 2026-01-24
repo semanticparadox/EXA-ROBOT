@@ -12,81 +12,112 @@
     <table role="grid">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>IP Address</th>
-                <th>Status</th>
-                <th>Last Online</th>
-                <th>Actions</th>
+                <th><small>Name / IP</small></th>
+                <th><small>Status</small></th>
+                <th><small>Last Seen</small></th>
+                <th style="text-align: right;"><small>Actions</small></th>
             </tr>
         </thead>
-        <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 5s" hx-select="#nodes-table-body"
+        <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 10s" hx-select="#nodes-table-body"
             hx-target="#nodes-table-body" hx-swap="outerHTML" id="nodes-table-body">
             {% for node in nodes %}
-            <tr>
-                <td>{{ node.name }}</td>
+            <tr style="opacity: {% if node.is_enabled %}1{% else %}0.6{% endif %};">
                 <td>
-                    {% if node.status == "new" || node.status == "installing" %}
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <small>⚡ Setup Required</small>
-                        <button class="outline" style="font-size: 0.8rem; padding: 0.2rem 0.5rem;"
+                    <div style="font-weight: bold;">{{ node.name }}</div>
+                    <small style="color: #666;">
+                        {% if node.status == "new" || node.status == "installing" %}
+                        <a href="#"
                             onclick="showConnectModal('{{ node.join_token.clone().unwrap_or_default() }}', '{{ node.name }}')">
-                            🔌 Connect
-                        </button>
-                    </div>
+                            🔌 Connect Server
+                        </a>
+                        {% else %}
+                        {{ node.ip }}
+                        {% endif %}
+                    </small>
+                </td>
+                <td>
+                    {% if node.status == "active" %}
+                    <span style="color: #4CAF50;">● Online</span>
+                    {% else if node.status == "offline" %}
+                    <span style="color: #F44336;">● Offline</span>
                     {% else %}
-                    {{ node.ip }}
+                    <span style="color: #FF9800;">● {{ node.status|capitalize }}</span>
+                    {% endif %}
+
+                    {% if !node.is_enabled %}
+                    <small style="color: #F44336; display: block;">(Disabled)</small>
                     {% endif %}
                 </td>
                 <td>
-                    <span class="badge">
-                        {{ node.status|capitalize }}
-                    </span>
-                </td>
-                <td>
                     {% if let Some(ls) = node.last_seen %}
-                    <small data-tooltip="{{ ls }}">
-                        {{ ls }} UTC
-                    </small>
+                    <small class="time-ago" data-time="{{ ls }}">{{ ls }}</small>
                     {% else %}
                     <small style="color: #666;">Never</small>
                     {% endif %}
                 </td>
-                <td>
-                    <div role="group">
-                        <a href="{{ admin_path }}/nodes/{{ node.id }}/inbounds" role="button"
-                            class="outline">Inbounds</a>
-
+                <td style="text-align: right;">
+                    <div class="grid"
+                        style="display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center;">
+                        <!-- Quick Actions -->
                         {% if node.status == "active" %}
-                        <button class="secondary outline" hx-post="{{ admin_path }}/nodes/{{ node.id }}/test"
-                            hx-swap="none" hx-on::after-request="alert(event.detail.xhr.responseText)">🔍 Test</button>
-                        <button class="secondary outline" hx-post="{{ admin_path }}/nodes/{{ node.id }}/restart"
-                            hx-swap="none" hx-confirm="Restart sing-box service on this node?"
-                            hx-on::after-request="alert(event.detail.xhr.responseText)">🔄 Restart</button>
-                        <button class="outline" hx-get="{{ admin_path }}/nodes/{{ node.id }}/logs"
-                            hx-target="#logs-modal-content"
-                            hx-on::after-request="document.getElementById('logs-modal').showModal()">📋 Logs</button>
-                        <button class="secondary outline" hx-post="{{ admin_path }}/nodes/{{ node.id }}/sync"
-                            hx-swap="none"
-                            hx-on::after-request="if(event.detail.successful) alert('Sync triggered!')">📤 Sync</button>
-                        {% else %}
-                        <!-- Manual install fallback -->
-                        <button class="outline" hx-delete="{{ admin_path }}/nodes/{{ node.id }}/delete"
-                            hx-confirm="Delete pending node?" hx-target="closest tr" hx-swap="outerHTML">Cancel</button>
+                        <button class="outline" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;"
+                            hx-post="{{ admin_path }}/nodes/{{ node.id }}/toggle" hx-swap="none">
+                            {% if node.is_enabled %}Disable{% else %}Enable{% endif %}
+                        </button>
                         {% endif %}
 
-                        <button class="outline" hx-get="{{ admin_path }}/nodes/{{ node.id }}/edit"
-                            hx-target="#edit-node-modal-content"
-                            hx-on::after-request="document.getElementById('edit-node-modal').showModal()">
-                            Edit
-                        </button>
-                        <button class="outline" onclick="showConfigPreview({{ node.id }})">Preview</button>
-                        <button class="outline error" hx-delete="{{ admin_path }}/nodes/{{ node.id }}/delete"
-                            hx-confirm="Are you sure you want to delete this node? This will remove all associated inbounds."
-                            hx-target="closest tr" hx-swap="outerHTML">Delete</button>
+                        <!-- More Actions Dropdown -->
+                        <details class="dropdown" style="margin-bottom: 0;">
+                            <summary role="button" class="outline secondary"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Manage ▾</summary>
+                            <ul dir="rtl">
+                                {% if node.status == "active" %}
+                                <li><a href="{{ admin_path }}/nodes/{{ node.id }}/inbounds">Inbounds</a></li>
+                                <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/test" hx-swap="none"
+                                        hx-on::after-request="alert(event.detail.xhr.responseText)">Test Connection</a>
+                                </li>
+                                <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/sync" hx-swap="none">Sync
+                                        Config</a></li>
+                                <li><a href="#" hx-get="{{ admin_path }}/nodes/{{ node.id }}/logs"
+                                        hx-target="#logs-modal-content"
+                                        hx-on::after-request="document.getElementById('logs-modal').showModal()">View
+                                        Logs</a></li>
+                                <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/restart"
+                                        hx-Confirm="Restart service?">Restart Service</a></li>
+                                {% endif %}
+                                <li><a href="#" hx-get="{{ admin_path }}/nodes/{{ node.id }}/edit"
+                                        hx-target="#edit-node-modal-content"
+                                        hx-on::after-request="document.getElementById('edit-node-modal').showModal()">Edit
+                                        Node</a></li>
+                                <li><a href="#" onclick="showConfigPreview({{ node.id }})">Preview Config</a></li>
+                                <li><a href="#" style="color: #F44336;"
+                                        hx-delete="{{ admin_path }}/nodes/{{ node.id }}/delete"
+                                        hx-confirm="Delete node? This cannot be undone." hx-target="closest tr"
+                                        hx-swap="outerHTML">Delete Node</a></li>
+                            </ul>
+                        </details>
                     </div>
                 </td>
             </tr>
             {% endfor %}
+            <script>
+                // Simple TimeAgo
+                document.querySelectorAll('.time-ago').forEach(el => {
+                    const date = new Date(el.getAttribute('data-time'));
+                    const now = new Date();
+                    const diff = Math.floor((now - date) / 1000);
+
+                    if (isNaN(diff)) return;
+
+                    let text = "";
+                    if (diff < 60) text = "Just now";
+                    else if (diff < 3600) text = Math.floor(diff / 60) + "m ago";
+                    else if (diff < 86400) text = Math.floor(diff / 3600) + "h ago";
+                    else text = Math.floor(diff / 86400) + "d ago";
+
+                    el.innerText = text;
+                });
+            </script>
         </tbody>
     </table>
 </section>
@@ -233,7 +264,7 @@
         modal.showModal();
 
         try {
-            const resp = await fetch(`/admin/nodes/${nodeId}/config/preview`);
+            const resp = await fetch(`{{ admin_path }}/nodes/${nodeId}/config/preview`);
             if (resp.ok) {
                 const json = await resp.text();
                 content.textContent = json;

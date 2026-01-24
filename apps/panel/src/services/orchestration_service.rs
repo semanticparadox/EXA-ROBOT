@@ -127,18 +127,25 @@ impl OrchestrationService {
 
     /// Generates Node Config JSON without applying it (Internal)
     pub async fn generate_node_config_json(&self, node_id: i64) -> anyhow::Result<(crate::models::node::Node, serde_json::Value)> {
+        info!("Step 1: Fetching node details for ID: {}", node_id);
         // 1. Fetch node details
         let node: Node = sqlx::query_as("SELECT * FROM nodes WHERE id = ?")
             .bind(node_id)
             .fetch_one(&self.pool)
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch node: {}", e);
+                e
+            })?;
 
+        info!("Step 2: Fetching inbounds for node {}", node_id);
         // 2. Fetch Inbounds for this node
         let mut inbounds: Vec<crate::models::network::Inbound> = sqlx::query_as("SELECT * FROM inbounds WHERE node_id = ?")
             .bind(node_id)
             .fetch_all(&self.pool)
             .await?;
 
+        info!("Step 3: Injecting users for {} inbounds", inbounds.len());
         // 3. For each inbound, inject authorized users
         for inbound in &mut inbounds {
             // Find plans linked to this inbound
@@ -194,12 +201,14 @@ impl OrchestrationService {
             }
         }
 
+        info!("Step 4: generating final sing-box config JSON");
         // 4. Generate Config
         let config = ConfigGenerator::generate_config(
             &node.ip,
             inbounds
         );
         
+        info!("Config generation successful for node {}", node_id);
         Ok((node, serde_json::to_value(&config)?))
     }
 
@@ -211,6 +220,11 @@ impl OrchestrationService {
         
         if node.status != "active" {
             // return Err(anyhow::anyhow!("Node is not active"));
+        }
+        
+        if !node.is_enabled {
+            info!("Node {} is disabled. Skipping sync.", node_id);
+            return Ok(());
         }
 
         let config_json = serde_json::to_string_pretty(&config_value)?;

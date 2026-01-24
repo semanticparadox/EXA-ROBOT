@@ -11,6 +11,16 @@ pub struct SshClient;
 #[async_trait]
 impl client::Handler for SshClient {
     type Error = anyhow::Error;
+
+    async fn check_server_key(
+        &mut self,
+        _server_public_key: &russh_keys::key::PublicKey,
+    ) -> Result<bool, Self::Error> {
+        // Warning: This disables Host Key verification!
+        // Necessary for dynamic nodes where we don't know the key in advance.
+        debug!("Accepting unknown server key (dynamic node context)");
+        Ok(true)
+    }
 }
 
 pub async fn execute_remote_script(

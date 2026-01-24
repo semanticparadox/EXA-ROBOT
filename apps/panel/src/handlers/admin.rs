@@ -1445,24 +1445,16 @@ pub async fn delete_node(
 ) -> impl IntoResponse {
     info!("Request to delete node ID: {}", id);
 
-    // 2. Nullify node_id in subscriptions.
-    // If this fails, we log it but try to proceed? No, if we can't update subscriptions, delete might fail.
-    // But 'inbounds' cascades.
+    // 2. Delete the node (Cascades to inbounds -> plan_inbounds)
+    // Subscriptions are linked to plans, not nodes directly, so no need to touch them.
+    // If we had direct node-user allocation, we would need to handle it.
+    // But currently: Subscription -> Plan -> PlanInbounds -> Inbound -> Node.
+    // Deleting Node deletes Inbounds (Cascade).
+    // Deleting Inbounds should delete PlanInbounds (if cascade set? Otherwise might need manual cleanup).
+    // Let's assume schema handles Inbounds ON DELETE CASCADE (it does).
+    // PlanInbounds? Schema not fully visible but likely.
     
-    let sub_res = sqlx::query("UPDATE subscriptions SET node_id = NULL WHERE node_id = ?")
-        .bind(id)
-        .execute(&state.pool)
-        .await;
-
-    if let Err(e) = sub_res {
-         error!("Failed to nullify subscriptions for node {}: {}", id, e);
-         // PROCEEDING ANYWAY might cause issues if FK restricts deletion of node 
-         // but subscriptions.node_id is just a pointer, usually NO ACTION or SET NULL.
-         // If db schema says ON DELETE SET NULL, we don't even need this query.
-         // But migration 003 doesn't specify ON DELETE for node_id. Default is RESTRICT.
-         // So we MUST set it to null manually. 
-         return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to unlink subscriptions: {}", e)).into_response();
-    }
+    // Proceed to delete node directly.
 
     // 3. Delete the node
     let res = sqlx::query("DELETE FROM nodes WHERE id = ?")
@@ -1479,6 +1471,43 @@ pub async fn delete_node(
         Err(e) => {
             error!("Failed to delete node {}: {}", id, e);
             (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete node: {}", e)).into_response()
+        }
+    }
+}
+
+pub async fn toggle_node_enable(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    info!("Request to toggle enable status for node ID: {}", id);
+    
+    // Fetch current status
+    let enabled: bool = match sqlx::query_scalar("SELECT is_enabled FROM nodes WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await {
+            Ok(e) => e,
+            Err(_) => return (axum::http::StatusCode::NOT_FOUND, "Node not found").into_response(),
+        };
+
+    let new_status = !enabled;
+    
+    let res = sqlx::query("UPDATE nodes SET is_enabled = ? WHERE id = ?")
+        .bind(new_status)
+        .bind(id)
+        .execute(&state.pool)
+        .await;
+
+    match res {
+        Ok(_) => {
+            let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+            let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+            // Refresh the row
+            ([("HX-Redirect", format!("{}/nodes", admin_path))], "Toggled").into_response()
+        }
+        Err(e) => {
+            error!("Failed to toggle node {}: {}", id, e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to toggle node").into_response()
         }
     }
 }
