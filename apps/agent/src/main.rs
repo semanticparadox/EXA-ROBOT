@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // Normalize URL
-    let mut panel_url = args.panel_url.clone();
+    let mut panel_url = args.panel_url.trim().to_string();
     if !panel_url.starts_with("http://") && !panel_url.starts_with("https://") {
         panel_url = format!("https://{}", panel_url);
     }
@@ -51,9 +51,12 @@ async fn main() -> anyhow::Result<()> {
     if panel_url.ends_with('/') {
         panel_url.pop();
     }
+    
+    // Normalize Token
+    let token = args.token.trim().to_string();
 
     info!("🔗 Panel URL: {}", panel_url);
-    info!("🔑 Token: {}...", &args.token[0..4.min(args.token.len())]);
+    info!("🔑 Token: {}...", &token[0..4.min(token.len())]);
     info!("📁 Config Path: {}", args.config_path);
 
     // 3. Load current hash (if config exists)
@@ -71,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
         let uptime = start_time.elapsed().as_secs();
         
         // Send Heartbeat
-        match send_heartbeat(&client, &panel_url, &args.token, uptime, &state).await {
+        match send_heartbeat(&client, &panel_url, &token, uptime, &state).await {
             Ok(resp) => {
                 failures = 0;
                 info!("💓 Heartbeat OK. Action: {:?}", resp.action);
@@ -80,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
                 match resp.action {
                     exarobot_shared::api::AgentAction::UpdateConfig => {
                         info!("🔄 Config update requested");
-                        if let Err(e) = update_config(&client, &panel_url, &args.token, &args.config_path, &mut state).await {
+                        if let Err(e) = update_config(&client, &panel_url, &token, &args.config_path, &mut state).await {
                             error!("Failed to update config: {}", e);
                         }
                     },
@@ -99,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
         
         // Periodic config check (every 10th heartbeat = ~100 seconds)
         if uptime % 100 < 10 {
-            if let Err(e) = check_and_update_config(&client, &panel_url, &args.token, &args.config_path, &mut state).await {
+            if let Err(e) = check_and_update_config(&client, &panel_url, &token, &args.config_path, &mut state).await {
                 error!("Config check failed: {}", e);
             }
         }

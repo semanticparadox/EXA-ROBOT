@@ -15,11 +15,12 @@
                 <th>Name</th>
                 <th>IP Address</th>
                 <th>Status</th>
+                <th>Last Online</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 5s" hx-select="#nodes-table-body"
-            hx-target="#nodes-table-body" id="nodes-table-body">
+            hx-target="#nodes-table-body" hx-swap="outerHTML" id="nodes-table-body">
             {% for node in nodes %}
             <tr>
                 <td>{{ node.name }}</td>
@@ -40,6 +41,15 @@
                     <span class="badge">
                         {{ node.status|capitalize }}
                     </span>
+                </td>
+                <td>
+                    {% if let Some(ls) = node.last_seen %}
+                    <small data-tooltip="{{ ls }}">
+                        {{ ls }} UTC
+                    </small>
+                    {% else %}
+                    <small style="color: #666;">Never</small>
+                    {% endif %}
                 </td>
                 <td>
                     <div role="group">

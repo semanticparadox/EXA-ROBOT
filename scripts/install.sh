@@ -49,6 +49,8 @@ detect_os() {
 install_dependencies() {
     log_info "Installing dependencies..."
     
+    setup_firewall # Run firewall setup early but safely
+    
     apt-get update -qq
     apt-get install -y curl git build-essential pkg-config libssl-dev sqlite3 -qq
     
@@ -60,6 +62,20 @@ install_dependencies() {
         log_success "Rust installed"
     else
         log_success "Rust already installed"
+    fi
+}
+
+setup_firewall() {
+    log_info "Configuring firewall..."
+    if command -v ufw &> /dev/null; then
+        ufw allow 22/tcp
+        ufw allow 80/tcp
+        ufw allow 443/tcp
+        ufw allow 9090/tcp
+        ufw allow 3000/tcp # Panel
+        log_success "Firewall rules updated (UFW)"
+    else
+        log_warn "UFW not found. Please manually allow ports: 22, 80, 443, 9090, 3000"
     fi
 }
 

@@ -31,6 +31,7 @@ reqwest = { version = "0.12", features = ["json"] }
 thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 tower-http = { version = "0.5", features = ["fs", "cors", "trace", "limit", "set-header", "compression-full"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 chrono = { version = "0.4", features = ["serde"] }
