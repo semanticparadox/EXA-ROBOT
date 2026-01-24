@@ -534,7 +534,7 @@ pub async fn get_node_edit(
             Ok(n) => n,
             Err(e) => {
                 error!("Failed to fetch node for edit: {}", e);
-                return Html(format!(r#"
+                return Html(format!(r###"
                     <header>
                         <a href="#close" aria-label="Close" class="close" onclick="document.getElementById('edit-node-modal').close()"></a>
                         Error
@@ -545,7 +545,7 @@ pub async fn get_node_edit(
                         <em>Please run database migrations.</em>
                     </div>
                     <footer><button onclick="document.getElementById('edit-node-modal').close()">Close</button></footer>
-                "#, e)).into_response();
+                "###, e)).into_response();
             }
         };
 
