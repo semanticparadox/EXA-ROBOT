@@ -1157,7 +1157,6 @@ pub async fn get_user_details(
     )
     .bind(id)
     .fetch_all(&state.pool)
-    .await
     .fetch_all(&state.pool)
     .await
     .map_err(|e| {
