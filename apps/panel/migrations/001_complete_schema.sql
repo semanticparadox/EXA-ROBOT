@@ -277,7 +277,7 @@ VALUES
 (3, 'Unlimited', 'No limits!', -1, 5, 39.99, 1, 3);
 
 -- Default Plan Durations
-INSERT OR IGNORE INTO plan_durations (plan_id, days, price, discount_percent, is_active)
+INSERT OR IGNORE INTO plan_durations (plan_id, duration_days, price, discount_percent, is_active)
 VALUES 
 -- Basic
 (1, 30, 9.99, 0, 1),
