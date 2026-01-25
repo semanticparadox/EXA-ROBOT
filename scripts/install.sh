@@ -507,6 +507,25 @@ main() {
         rm -rf "$TEMP_BUILD_DIR"
     fi
     
+    
+    # Verification
+    if [[ "$ROLE" == "agent" || "$ROLE" == "both" ]]; then
+        echo ""
+        log_info "Verifying Agent Connection..."
+        sleep 2
+        # Simple connectivity check
+        if curl -s --max-time 5 "$PANEL_URL" > /dev/null; then
+             log_success "Agent can reach Panel at $PANEL_URL"
+        else
+             log_warn "Agent CANNOT reach Panel at $PANEL_URL"
+             echo "Possible issues: Firewall, DNS, or Panel is down."
+        fi
+        
+        echo ""
+        log_info "To view logs:"
+        echo "  Panel: journalctl -u exarobot-panel -f"
+        echo "  Agent: journalctl -u exarobot-agent -f"
+    fi
 
     
     echo ""

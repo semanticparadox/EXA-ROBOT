@@ -56,21 +56,32 @@ pub async fn heartbeat(
     // Solution: "Steal" the IP. Set any OTHER node with this IP to a temporary value or NULL (if allowed).
     // Validating if IP changed first to avoid unnecessary writes.
     if node.ip != remote_ip {
+        info!("Node {:?} IP changed from {:?} to {}. Handling constraints...", node.id, node.ip, remote_ip);
         // Clear IP from other nodes to enforce uniqueness "latest wins"
-        let _ = sqlx::query("UPDATE nodes SET ip = cast(id as text) || '_orphaned' WHERE ip = ? AND id != ?")
+        let update_res = sqlx::query("UPDATE nodes SET ip = cast(id as text) || '_orphaned' WHERE ip = ? AND id != ?")
             .bind(&remote_ip)
             .bind(node.id)
             .execute(&state.pool)
             .await;
+        
+        if let Err(e) = update_res {
+             error!("Failed to orphan old nodes with IP {}: {:?}", remote_ip, e);
+             // We continue, but the next update might fail
+        }
     }
 
     // Now safe to update
-    let _ = sqlx::query("UPDATE nodes SET last_seen = CURRENT_TIMESTAMP, status = ?, ip = ? WHERE id = ?")
+    let update_status_res = sqlx::query("UPDATE nodes SET last_seen = CURRENT_TIMESTAMP, status = ?, ip = ? WHERE id = ?")
         .bind(new_status)
-        .bind(remote_ip)
+        .bind(&remote_ip)
         .bind(node.id)
         .execute(&state.pool)
         .await;
+
+    if let Err(e) = update_status_res {
+        error!("Failed to update node {:?} heartbeat: {:?}", node.id, e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB Update Error: {}", e)).into_response();
+    }
 
     
     // 4. Check if config update is needed (hash mismatch)
