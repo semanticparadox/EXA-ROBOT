@@ -1169,6 +1169,12 @@ pub async fn get_user_details(
     .bind(id)
     .fetch_all(&state.pool)
     .await
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to fetch user subscriptions: {}", e);
+        e
+    })
     .unwrap_or_default();
 
     // 3. Fetch Order History
