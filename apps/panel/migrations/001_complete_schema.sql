@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS plan_durations (
     price INTEGER NOT NULL,
     discount_percent REAL DEFAULT 0,
     is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
 );
 
