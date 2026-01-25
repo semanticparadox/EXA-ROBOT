@@ -23,23 +23,27 @@ pub async fn heartbeat(
     };
 
     // 2. Validate Node
-    let node_res = sqlx::query!("SELECT id, status, ip FROM nodes WHERE join_token = ?", token)
+    // 2. Validate Node
+    // Using query_as for resilience against schema drift (e.g. if ip is null in older DBs)
+    let node_res: Result<Option<(i64, String, Option<String>)>, sqlx::Error> = 
+        sqlx::query_as("SELECT id, status, ip FROM nodes WHERE join_token = ?")
+        .bind(token)
         .fetch_optional(&state.pool)
         .await;
 
-    let node = match node_res {
-        Ok(Some(n)) => n,
+    let (node_id, node_status, node_ip) = match node_res {
+        Ok(Some((id, status, ip_opt))) => (id, status, ip_opt.unwrap_or_default()),
         Ok(None) => {
-            tracing::warn!("Heartbeat from unknown token: {}", token);
+            tracing::warn!("Heartbeat from unknown token");
             return (StatusCode::UNAUTHORIZED, "Invalid Token").into_response();
         }
         Err(e) => {
-            error!("DB Error: {:?}", e);
+            error!("DB Error in heartbeat select: {:?}", e);
             return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {}", e)).into_response();
         }
     };
 
-    info!("💓 Heartbeat from Node {:?} ({}): ver={}, uptime={}", node.id, addr.ip(), payload.version, payload.uptime);
+    info!("💓 Heartbeat from Node {:?} ({}): ver={}, uptime={}", node_id, addr.ip(), payload.version, payload.uptime);
 
     // 3. Update Status and IP
     // Use X-Forwarded-For if available, else SocketAddr
@@ -49,18 +53,18 @@ pub async fn heartbeat(
         .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
         .unwrap_or_else(|| addr.ip().to_string());
     
-    let new_status = if node.status == "new" || node.status == "installing" { "active" } else { "active" };
+    let new_status = if node_status == "new" || node_status == "installing" { "active" } else { "active" };
 
     // Handle Unique IP Constraint Logic:
     // If we try to update this node to 'remote_ip', and another node has 'remote_ip', it will fail with 500.
     // Solution: "Steal" the IP. Set any OTHER node with this IP to a temporary value or NULL (if allowed).
     // Validating if IP changed first to avoid unnecessary writes.
-    if node.ip != remote_ip {
-        info!("Node {:?} IP changed from {:?} to {}. Handling constraints...", node.id, node.ip, remote_ip);
+    if node_ip != remote_ip {
+        info!("Node {:?} IP changed from {:?} to {}. Handling constraints...", node_id, node_ip, remote_ip);
         // Clear IP from other nodes to enforce uniqueness "latest wins"
         let update_res = sqlx::query("UPDATE nodes SET ip = cast(id as text) || '_orphaned' WHERE ip = ? AND id != ?")
             .bind(&remote_ip)
-            .bind(node.id)
+            .bind(node_id)
             .execute(&state.pool)
             .await;
         
@@ -74,12 +78,12 @@ pub async fn heartbeat(
     let update_status_res = sqlx::query("UPDATE nodes SET last_seen = CURRENT_TIMESTAMP, status = ?, ip = ? WHERE id = ?")
         .bind(new_status)
         .bind(&remote_ip)
-        .bind(node.id)
+        .bind(node_id)
         .execute(&state.pool)
         .await;
 
     if let Err(e) = update_status_res {
-        error!("Failed to update node {:?} heartbeat: {:?}", node.id, e);
+        error!("Failed to update node {:?} heartbeat: {:?}", node_id, e);
         return (StatusCode::INTERNAL_SERVER_ERROR, format!("DB Update Error: {}", e)).into_response();
     }
 
