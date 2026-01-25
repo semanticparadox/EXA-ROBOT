@@ -919,25 +919,30 @@ impl StoreService {
                     reality_settings: None,
                 });
 
-                let (address, reality_pub) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
+                let (address, reality_pub, short_id) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
                     // We need the Node's public IP and Reality Key
-                    let node_details: Option<(String, Option<String>)> = sqlx::query_as("SELECT ip, reality_pub FROM nodes WHERE id = ?")
+                    let node_details: Option<(String, Option<String>, Option<String>)> = sqlx::query_as("SELECT ip, reality_pub, short_id FROM nodes WHERE id = ?")
                         .bind(inbound.node_id)
                         .fetch_optional(&self.pool)
                         .await?;
                     
-                    if let Some((ip, pub_key)) = node_details {
-                        (ip, pub_key)
+                    if let Some((ip, pub_key, sid)) = node_details {
+                        (ip, pub_key, sid)
                     } else {
-                        (inbound.listen_ip.clone(), None)
+                        (inbound.listen_ip.clone(), None, None)
                     }
                 } else {
                     // If specifically binding to an IP, we might still need the key if it's on the same node
-                     let pub_key: Option<String> = sqlx::query_scalar("SELECT reality_pub FROM nodes WHERE id = ?")
+                     let node_details: Option<(Option<String>, Option<String>)> = sqlx::query_as("SELECT reality_pub, short_id FROM nodes WHERE id = ?")
                         .bind(inbound.node_id)
                         .fetch_optional(&self.pool)
                         .await?;
-                    (inbound.listen_ip.clone(), pub_key)
+                     
+                     if let Some((pub_key, sid)) = node_details {
+                         (inbound.listen_ip.clone(), pub_key, sid)
+                     } else {
+                         (inbound.listen_ip.clone(), None, None)
+                     }
                 };
 
                 let port = inbound.listen_port;
@@ -953,6 +958,9 @@ impl StoreService {
                             if let Some(reality) = stream.reality_settings {
                                 params.push(format!("sni={}", reality.server_names.first().cloned().unwrap_or_default()));
                                 params.push(format!("pbk={}", reality_pub.unwrap_or_default())); 
+                                if let Some(sid) = &short_id {
+                                    params.push(format!("sid={}", sid));
+                                }
                                 params.push("fp=chrome".to_string());
                             }
                         } else if stream.security == "tls" {
