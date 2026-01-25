@@ -863,12 +863,7 @@ pub async fn delete_plan(
             (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete plan: {}", e)).into_response()
         }
     }
-        }
-        Err(e) => {
-            error!("Failed to delete plan {}: {}", id, e);
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete plan: {}", e)).into_response()
-        }
-    }
+}
 }
 
 pub async fn get_plan_edit(
