@@ -49,5 +49,36 @@ pub async fn init_db() -> Result<SqlitePool> {
         }
     }
 
+    // 2. Ensure 'balance' in users (Integer, stored in cents)
+    let has_balance: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('users') WHERE name='balance'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_balance {
+        tracing::info!("Applying schema repair: Adding 'balance' to users table");
+        if let Err(e) = sqlx::query("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0").execute(&pool).await {
+             tracing::warn!("Failed to add balance column: {}", e);
+        }
+    }
+
+    // 3. Ensure 'traffic_limit_gb' in plans
+    let has_traffic_limit: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('plans') WHERE name='traffic_limit_gb'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_traffic_limit {
+        tracing::info!("Applying schema repair: Adding 'traffic_limit_gb' to plans table");
+        // Default 0 means unlimited or just unset, handled by logic
+        if let Err(e) = sqlx::query("ALTER TABLE plans ADD COLUMN traffic_limit_gb INTEGER DEFAULT 0").execute(&pool).await {
+             tracing::warn!("Failed to add traffic_limit_gb column: {}", e);
+        }
+    }
+
     Ok(pool)
 }
