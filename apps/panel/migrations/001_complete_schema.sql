@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     plan_id INTEGER NOT NULL,
+    node_id INTEGER,
     vless_uuid TEXT UNIQUE, -- Generated once, used for all configs
     status TEXT NOT NULL DEFAULT 'pending', -- pending, active, expired, suspended
     used_traffic INTEGER DEFAULT 0,
@@ -145,6 +146,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     activated_at DATETIME,
     expires_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    traffic_updated_at DATETIME,
     note TEXT, -- Admin notes
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (plan_id) REFERENCES plans(id)
