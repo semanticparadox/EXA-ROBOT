@@ -69,7 +69,7 @@ main() {
              # handled at end
              true
         else
-         else
+
              set +e
              if [ -t 0 ]; then
                  read -p "Remove Panel Database and Config? (y/N): " RMPANEL

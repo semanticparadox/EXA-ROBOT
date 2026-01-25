@@ -236,7 +236,7 @@ setup_directory() {
 configure_panel() {
     # Interactive Prompts
     if [[ -z "$DOMAIN" ]]; then
-    if [[ -z "$DOMAIN" ]]; then
+
         if [ -t 0 ]; then
             read -p "Enter server domain (e.g. panel.example.com): " DOMAIN
         else
@@ -245,7 +245,7 @@ configure_panel() {
         fi
     fi
     if [[ -z "$PANEL_PORT" ]]; then
-    if [[ -z "$PANEL_PORT" ]]; then
+
         if [ -t 0 ]; then
              read -p "Enter Panel Port [3000]: " PANEL_PORT
         else
@@ -319,7 +319,7 @@ EOF
 
 configure_agent() {
     if [[ -z "$PANEL_URL" ]]; then
-    if [[ -z "$PANEL_URL" ]]; then
+
         if [ -t 0 ]; then
             read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL
         else
@@ -328,7 +328,7 @@ configure_agent() {
         fi
     fi
     if [[ -z "$NODE_TOKEN" ]]; then
-    if [[ -z "$NODE_TOKEN" ]]; then
+
         if [ -t 0 ]; then
              read -p "Enter Node Token: " NODE_TOKEN
         else
