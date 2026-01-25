@@ -85,8 +85,8 @@
                                 <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/restart"
                                         hx-Confirm="Restart service?">Restart Service</a></li>
                                 {% endif %}
-                                <li><a href="#" hx-get="{{ admin_path }}/nodes/{{ node.id }}/edit"
-                                        hx-target="#edit-node-modal-content"
+                                <li><a href="javascript:void(0)" hx-get="{{ admin_path }}/nodes/{{ node.id }}/edit"
+                                        hx-target="#edit-node-modal-content" hx-swap="innerHTML"
                                         hx-on::after-request="document.getElementById('edit-node-modal').showModal()">Edit
                                         Node</a></li>
                                 <li><a href="#" onclick="showConfigPreview({{ node.id }})">Preview Config</a></li>
