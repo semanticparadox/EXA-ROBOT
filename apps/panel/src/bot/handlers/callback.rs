@@ -232,7 +232,7 @@ pub async fn callback_handler(
                             } else {
                                 let mut response = "🎁 *My Gift Codes* \\(Unredeemed\\):\n\n".to_string();
                                 for code in codes {
-                                    response.push_str(&format!("🎟 `{}`\n   Days: {}\n\n", code.code, code.duration_days));
+                                    response.push_str(&format!("🎟 `{}`\n   Days: {}\n\n", code.code, code.duration_days.unwrap_or(0)));
                                 }
                                 if let Some(msg) = q.message {
                                         if let Err(e) = bot.send_message(msg.chat().id, response).parse_mode(ParseMode::MarkdownV2).await {
