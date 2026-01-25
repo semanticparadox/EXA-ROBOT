@@ -168,7 +168,10 @@ check_conflicts() {
                  fuser -k 3000/tcp || true
             fi
             
-            # Remove Files
+            # Remove Files - SAFELY
+            # Move out of the directory first to avoid 'getcwd' errors if running from there
+            cd /tmp || exit 1
+            
             log_info "Removing installation directory..."
             rm -rf "$INSTALL_DIR"
             

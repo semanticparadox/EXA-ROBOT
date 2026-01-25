@@ -24,7 +24,7 @@ pub async fn run_bot(bot: Bot, mut shutdown_signal: tokio::sync::broadcast::Rece
         Ok(me) => info!("Bot connected as: @{}", me.username.clone().unwrap_or("unknown".into())),
         Err(e) => {
             error!("CRITICAL: Bot failed to connect to Telegram: {}", e);
-            // Don't crash immediately, maybe it's a temp network issue? 
+            // Don't crash immediately, maybe it's a temp network issue?    
             // But usually this means invalid token.
             return;
         }

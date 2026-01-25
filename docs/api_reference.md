@@ -45,7 +45,7 @@ All routes below are prefixed with `/{admin_path}` (Default: `/admin`) and requi
 | `POST` | `/nodes/:id/sync` | `sync_node` | Force config sync |
 | `GET` | `/nodes/:id/logs` | `node_control::pull_node_logs` | View agent logs |
 | `POST` | `/nodes/:id/restart` | `node_control::restart_node_service` | Restart agent/VPN |
-| `DELETE` | `/nodes/:id/delete` | `delete_node` | Remove node |
+| `DELETE` | `/nodes/:id/delete` | `delete_node` | Remove node |    
 
 ### Network Configuration (Inbounds)
 | Method | Path | Handler | Description |
