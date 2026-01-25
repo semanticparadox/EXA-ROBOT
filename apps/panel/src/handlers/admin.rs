@@ -852,22 +852,17 @@ pub async fn delete_plan(
 ) -> impl IntoResponse {
     info!("Request to delete plan: {}", id);
     
-    // 1. Delete associated subscriptions
-    let sub_del = sqlx::query("DELETE FROM subscriptions WHERE plan_id = ?")
-        .bind(id)
-        .execute(&state.pool)
-        .await;
-
-    if let Err(e) = sub_del {
-        error!("Failed to delete subscriptions for plan {}: {}", id, e);
-        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clear subscriptions: {}", e)).into_response();
-    }
-
-    // 2. Delete the plan (plan_inbounds will cascade automatically)
-    match sqlx::query("DELETE FROM plans WHERE id = ?").bind(id).execute(&state.pool).await {
-        Ok(_) => {
-            info!("Plan {} deleted successfully", id);
+    // 1. Use Store Service to delete plan + refund active users
+    match state.store_service.delete_plan_and_refund(id).await {
+        Ok((refunded_users, total_refunded_cents)) => {
+            info!("Plan {} deleted. Refunded {} users (Total: ${:.2})", id, refunded_users, total_refunded_cents as f64 / 100.0);
             (axum::http::StatusCode::OK, "").into_response()
+        },
+        Err(e) => {
+            error!("Failed to delete plan {}: {}", id, e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete plan: {}", e)).into_response()
+        }
+    }
         }
         Err(e) => {
             error!("Failed to delete plan {}: {}", id, e);

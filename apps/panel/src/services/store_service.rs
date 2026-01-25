@@ -1220,4 +1220,88 @@ impl StoreService {
 
         Ok(())
     }
+
+    /// Delete a plan and refund all active users pro-rated
+    pub async fn delete_plan_and_refund(&self, plan_id: i64) -> Result<(i32, i64)> {
+        let mut tx = self.pool.begin().await?;
+        
+        // 1. Get all active subscriptions for this plan
+        let active_subs = sqlx::query_as::<_, Subscription>(
+            "SELECT * FROM subscriptions WHERE plan_id = ? AND status = 'active'"
+        )
+        .bind(plan_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut refunded_users = 0;
+        let mut total_refunded_cents = 0;
+
+        for sub in active_subs {
+             // Calculate remaining days
+             let now = Utc::now();
+             if sub.expires_at > now {
+                 let remaining_duration = sub.expires_at - now;
+                 let remaining_days = remaining_duration.num_days().max(1); // At least 1 day if > 0
+                 
+                 // Find the price per day for this plan (approximate from base duration)
+                 // We try to find the duration that matches the original subscription length
+                 // But we don't store original duration in subscription directly easily (only start/end)
+                 // So we get average daily price from plan_durations
+                 let price_per_day: f64 = sqlx::query_scalar(
+                    "SELECT CAST(price AS REAL) / duration_days FROM plan_durations WHERE plan_id = ? ORDER BY duration_days ASC LIMIT 1"
+                 )
+                 .bind(plan_id)
+                 .fetch_optional(&mut *tx)
+                 .await?
+                 .unwrap_or(0.0);
+                 
+                 let refund_amount_cents = (remaining_days as f64 * price_per_day) as i64;
+                 
+                 if refund_amount_cents > 0 {
+                     // Credit User
+                     sqlx::query("UPDATE users SET balance = balance + ? WHERE id = ?")
+                        .bind(refund_amount_cents)
+                        .bind(sub.user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                        
+                     // Log Transaction/Activity
+                     // We don't have a transaction log table for "refunds" specifically yet in schema shown, 
+                     // but we have activity_log.
+                     let _ = crate::services::activity_service::ActivityService::log_tx(&mut *tx, Some(sub.user_id), "Refund", &format!("Plan deleted. Refund for {} days: ${:.2}", remaining_days, refund_amount_cents as f64 / 100.0)).await;
+                     
+                     total_refunded_cents += refund_amount_cents;
+                     refunded_users += 1;
+                 }
+             }
+        }
+
+        // 2. Delete Subscriptions (Active and Inactive)
+        sqlx::query("DELETE FROM subscriptions WHERE plan_id = ?")
+            .bind(plan_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // 3. Delete Plan Durations
+        sqlx::query("DELETE FROM plan_durations WHERE plan_id = ?")
+            .bind(plan_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // 4. Delete Plan Inbounds binding
+        sqlx::query("DELETE FROM plan_inbounds WHERE plan_id = ?")
+            .bind(plan_id)
+            .execute(&mut *tx)
+            .await?;
+            
+        // 5. Delete Plan
+        sqlx::query("DELETE FROM plans WHERE id = ?")
+            .bind(plan_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        
+        Ok((refunded_users, total_refunded_cents))
+    }
 }
