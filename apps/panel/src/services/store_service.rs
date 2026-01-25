@@ -976,10 +976,8 @@ impl StoreService {
                     "hysteria2" => {
                         // hysteria2://password@ip:port?sni=...&insecure=1#remark
                         let mut params = Vec::new();
-                         if stream.security == "tls" {
-                            if let Some(tls) = stream.tls_settings {
-                                params.push(format!("sni={}", tls.server_name));
-                            }
+                         if let Some(tls) = stream.tls_settings {
+                            params.push(format!("sni={}", tls.server_name));
                         }
                         params.push("insecure=1".to_string()); // Self-signed usually
 
