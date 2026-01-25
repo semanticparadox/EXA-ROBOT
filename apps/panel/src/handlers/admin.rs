@@ -1157,7 +1157,6 @@ pub async fn get_user_details(
     )
     .bind(id)
     .fetch_all(&state.pool)
-    .fetch_all(&state.pool)
     .await
     .map_err(|e| {
         error!("Failed to fetch user subscriptions: {}", e);
