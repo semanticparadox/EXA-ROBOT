@@ -80,5 +80,35 @@ pub async fn init_db() -> Result<SqlitePool> {
         }
     }
 
+    // 4. Ensure 'terms_accepted_at' in users (DATETIME)
+    let has_terms: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('users') WHERE name='terms_accepted_at'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_terms {
+        tracing::info!("Applying schema repair: Adding 'terms_accepted_at' to users table");
+        if let Err(e) = sqlx::query("ALTER TABLE users ADD COLUMN terms_accepted_at DATETIME").execute(&pool).await {
+             tracing::warn!("Failed to add terms_accepted_at column: {}", e);
+        }
+    }
+
+    // 5. Ensure 'warning_count' in users (INTEGER)
+    let has_warnings: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('users') WHERE name='warning_count'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_warnings {
+        tracing::info!("Applying schema repair: Adding 'warning_count' to users table");
+        if let Err(e) = sqlx::query("ALTER TABLE users ADD COLUMN warning_count INTEGER DEFAULT 0").execute(&pool).await {
+             tracing::warn!("Failed to add warning_count column: {}", e);
+        }
+    }
+
     Ok(pool)
 }

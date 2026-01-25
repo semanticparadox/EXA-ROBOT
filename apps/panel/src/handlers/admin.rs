@@ -650,7 +650,7 @@ pub async fn get_node_raw_install_script(
 
 // Plans Handlers
 pub async fn get_plans(State(state): State<AppState>) -> impl IntoResponse {
-    let mut plans = match sqlx::query_as::<_, Plan>("SELECT id, name, description, is_active, created_at, device_limit FROM plans")
+    let mut plans = match sqlx::query_as::<_, Plan>("SELECT id, name, description, is_active, created_at, device_limit, traffic_limit_gb FROM plans")
         .fetch_all(&state.pool)
         .await {
             Ok(p) => {
@@ -880,7 +880,7 @@ pub async fn get_plan_edit(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
-    let plan = match sqlx::query_as::<_, Plan>("SELECT id, name, description, is_active, created_at, device_limit FROM plans WHERE id = ?").bind(id).fetch_optional(&state.pool).await {
+    let plan = match sqlx::query_as::<_, Plan>("SELECT id, name, description, is_active, created_at, device_limit, traffic_limit_gb FROM plans WHERE id = ?").bind(id).fetch_optional(&state.pool).await {
         Ok(Some(mut p)) => {
             let durations = sqlx::query_as::<_, crate::models::store::PlanDuration>(
                 "SELECT * FROM plan_durations WHERE plan_id = ? ORDER BY duration_days ASC"
