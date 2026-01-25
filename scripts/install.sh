@@ -29,6 +29,7 @@ PANEL_URL=""
 NODE_TOKEN=""
 DOMAIN=""
 ADMIN_PATH="/admin"
+FORCE_INSTALL=false
 
 # --------------------------------------------------
 # Logging
@@ -109,9 +110,29 @@ check_conflicts() {
         echo ""
         echo -e "${RED}Conflicts detected!${NC}"
         echo "It seems a previous installation or another service is running."
-        read -p "Do you want to stop existing services and overwrite? (y/N): " OVERWRITE < /dev/tty
-        if [[ "$OVERWRITE" == "y" ]]; then
+        
+        OVERWRITE="n"
+        if [ "$FORCE_INSTALL" = true ]; then
+            log_warn "Force flag detected. Overwriting..."
+            OVERWRITE="y"
+        else
+            # Use set +e to prevent exit on read failure
+            set +e
+            # Force read from TTY specifically, separate echo for safety
+            if [ -t 0 ]; then
+                read -p "Do you want to stop existing services, DELETE DATA, and overwrite? (y/N): " OVERWRITE
+            else
+                 # Try direct TTY access
+                 echo -n "Do you want to stop existing services, DELETE DATA, and overwrite? (y/N): "
+                 read -r OVERWRITE < /dev/tty
+            fi
+            set -e
+        fi
+
+        if [[ "$OVERWRITE" == "y" || "$OVERWRITE" == "Y" ]]; then
             log_info "Stopping and removing existing services..."
+            
+            # Stop Services
             systemctl stop exarobot-panel || true
             systemctl disable exarobot-panel || true
             rm -f /etc/systemd/system/exarobot-panel.service
@@ -120,14 +141,29 @@ check_conflicts() {
             systemctl disable exarobot-agent || true
             rm -f /etc/systemd/system/exarobot-agent.service
             
-            systemctl daemon-reload
-            
-            # Optional: Kill lingering processes on port 3000 if still active
+            # Remove Sing-box (if requested by user "remove sing-box also")
+            # We assume if we are overwriting agent, we might want to clean sing-box too?
+            # User specifically asked for this.
+            if command -v sing-box &> /dev/null; then
+                 log_info "Removing Sing-box..."
+                 systemctl stop sing-box || true
+                 systemctl disable sing-box || true
+                 apt-get remove -y sing-box || true
+                 rm -rf /etc/sing-box
+                 rm -f /etc/systemd/system/sing-box.service.d/override.conf
+            fi
+
+            # Kill Ports
             if command -v fuser &> /dev/null; then
                  fuser -k 3000/tcp || true
             fi
             
-            log_success "Previous services removed. Proceeding..."
+            # Remove Files
+            log_info "Removing installation directory..."
+            rm -rf "$INSTALL_DIR"
+            
+            systemctl daemon-reload
+            log_success "Cleanup complete. Proceeding with fresh install..."
         else
             log_error "Installation aborted by user."
             exit 1
@@ -329,6 +365,7 @@ main() {
             --token) NODE_TOKEN="$2"; shift ;;
             --domain) DOMAIN="$2"; shift ;;
             --admin-path) ADMIN_PATH="$2"; shift ;;
+            --force) FORCE_INSTALL=true ;;
             *) echo "Unknown parameter: $1"; exit 1 ;;
         esac
         shift
