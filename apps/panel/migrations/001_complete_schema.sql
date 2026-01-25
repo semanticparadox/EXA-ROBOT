@@ -121,10 +121,9 @@ CREATE TABLE IF NOT EXISTS plans (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS plan_durations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plan_id INTEGER NOT NULL,
-    days INTEGER NOT NULL,
+    duration_days INTEGER NOT NULL,
     price REAL NOT NULL,
     discount_percent REAL DEFAULT 0,
     is_active BOOLEAN DEFAULT 1,
@@ -185,14 +184,15 @@ CREATE INDEX IF NOT EXISTS idx_orders_payment_id ON orders (payment_id);
 CREATE TABLE IF NOT EXISTS gift_codes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
-    subscription_id INTEGER,
+    plan_id INTEGER,
+    duration_days INTEGER,
     created_by_user_id INTEGER NOT NULL,
     redeemed_by_user_id INTEGER,
     status TEXT NOT NULL DEFAULT 'active', -- active, redeemed, expired
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     redeemed_at DATETIME,
     expires_at DATETIME,
-    FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES plans(id),
     FOREIGN KEY (created_by_user_id) REFERENCES users(id),
     FOREIGN KEY (redeemed_by_user_id) REFERENCES users(id)
 );

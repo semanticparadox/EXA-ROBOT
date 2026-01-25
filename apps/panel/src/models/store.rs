@@ -71,10 +71,10 @@ pub struct PromoCode {
 pub struct GiftCode {
     pub id: i64,
     pub code: String,
-    pub plan_id: i64,
-    pub duration_days: i32,
-    pub created_by: i64,
-    pub redeemed_by: Option<i64>,
+    pub plan_id: Option<i64>,
+    pub duration_days: Option<i32>,
+    pub created_by_user_id: i64,
+    pub redeemed_by_user_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub redeemed_at: Option<DateTime<Utc>>,
 }

@@ -341,7 +341,7 @@ impl StoreService {
 
         // 5. Create Gift Code Record
         sqlx::query(
-            "INSERT INTO gift_codes (code, plan_id, duration_days, created_by) VALUES (?, ?, ?, ?)"
+            "INSERT INTO gift_codes (code, plan_id, duration_days, created_by_user_id) VALUES (?, ?, ?, ?)"
         )
         .bind(&code)
         .bind(sub.plan_id)
@@ -359,7 +359,7 @@ impl StoreService {
 
         // 1. Verify Code matches and is not redeemed
         let gift_code_opt = sqlx::query_as::<_, crate::models::store::GiftCode>(
-            "SELECT * FROM gift_codes WHERE code = ? AND redeemed_by IS NULL"
+            "SELECT * FROM gift_codes WHERE code = ? AND redeemed_by_user_id IS NULL"
         )
         .bind(code)
         .fetch_optional(&mut *tx)
@@ -369,7 +369,10 @@ impl StoreService {
 
         // 2. Create Subscription (Pending)
         // expires_at = now + duration_days (same logic as purchase_plan)
-        let expires_at = Utc::now() + Duration::days(gift_code.duration_days as i64);
+        let days = gift_code.duration_days.ok_or_else(|| anyhow::anyhow!("Gift code invalid (no duration)"))?;
+        let plan_id = gift_code.plan_id.ok_or_else(|| anyhow::anyhow!("Gift code invalid (no plan)"))?;
+        
+        let expires_at = Utc::now() + Duration::days(days as i64);
         let vless_uuid = Uuid::new_v4().to_string();
 
         let sub = sqlx::query_as::<_, Subscription>(
@@ -380,14 +383,14 @@ impl StoreService {
             "#
         )
         .bind(user_id)
-        .bind(gift_code.plan_id)
+        .bind(plan_id)
         .bind(vless_uuid)
         .bind(expires_at)
         .fetch_one(&mut *tx)
         .await?;
 
         // 3. Mark Code as Redeemed
-        sqlx::query("UPDATE gift_codes SET redeemed_by = ?, redeemed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        sqlx::query("UPDATE gift_codes SET redeemed_by_user_id = ?, redeemed_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(user_id)
             .bind(gift_code.id)
             .execute(&mut *tx)
@@ -663,7 +666,7 @@ impl StoreService {
 
     pub async fn get_user_gift_codes(&self, user_id: i64) -> Result<Vec<GiftCode>> {
         sqlx::query_as::<_, GiftCode>(
-            "SELECT * FROM gift_codes WHERE created_by = ? AND redeemed_by IS NULL ORDER BY created_at DESC"
+            "SELECT * FROM gift_codes WHERE created_by_user_id = ? AND redeemed_by_user_id IS NULL ORDER BY created_at DESC"
         )
         .bind(user_id)
         .fetch_all(&self.pool)

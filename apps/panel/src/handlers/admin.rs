@@ -794,7 +794,7 @@ pub async fn add_plan(
 
     // 1. Insert Plan
     // Using traffic_limit_gb for the plan
-    let plan_id: i64 = match sqlx::query("INSERT INTO plans (name, description, is_active, price, duration_days, traffic_limit_gb, device_limit) VALUES (?, ?, 1, 0, 30, ?, ?) RETURNING id")
+    let plan_id: i64 = match sqlx::query("INSERT INTO plans (name, description, is_active, price, traffic_limit_gb, device_limit) VALUES (?, ?, 1, 0, ?, ?) RETURNING id")
         .bind(&name)
         .bind(&description)
         .bind(traffic_limit_gb)
