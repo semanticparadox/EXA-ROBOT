@@ -329,7 +329,7 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
