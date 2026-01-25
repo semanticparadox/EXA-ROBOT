@@ -885,6 +885,114 @@ impl StoreService {
         .context("Failed to fetch user purchased products")
     }
 
+    pub async fn get_subscription_links(&self, sub_id: i64) -> Result<Vec<String>> {
+        let mut links = Vec::new();
+
+        // 1. Get subscription
+        let sub: Option<Subscription> = sqlx::query_as("SELECT * FROM subscriptions WHERE id = ?")
+            .bind(sub_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        
+        if let Some(sub) = sub {
+            let uuid = sub.vless_uuid.clone().unwrap_or_default();
+            
+            // 2. Get Inbounds for this Plan
+            let inbounds = sqlx::query_as::<_, crate::models::network::Inbound>(
+                r#"
+                SELECT i.* FROM inbounds i
+                JOIN plan_inbounds pi ON pi.inbound_id = i.id
+                WHERE pi.plan_id = ? AND i.enable = 1
+                "#
+            )
+            .bind(sub.plan_id)
+            .fetch_all(&self.pool)
+            .await?;
+            
+            for inbound in inbounds {
+                // Parse stream settings to find SNI/Security
+                use crate::models::network::{StreamSettings};
+                let stream: StreamSettings = serde_json::from_str(&inbound.stream_settings).unwrap_or(StreamSettings {
+                    network: "tcp".to_string(),
+                    security: "none".to_string(),
+                    tls_settings: None,
+                    reality_settings: None,
+                });
+
+                let (address, reality_pub) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
+                    // We need the Node's public IP and Reality Key
+                    let node_details: Option<(String, Option<String>)> = sqlx::query_as("SELECT ip, reality_pub FROM nodes WHERE id = ?")
+                        .bind(inbound.node_id)
+                        .fetch_optional(&self.pool)
+                        .await?;
+                    
+                    if let Some((ip, pub_key)) = node_details {
+                        (ip, pub_key)
+                    } else {
+                        (inbound.listen_ip.clone(), None)
+                    }
+                } else {
+                    // If specifically binding to an IP, we might still need the key if it's on the same node
+                     let pub_key: Option<String> = sqlx::query_scalar("SELECT reality_pub FROM nodes WHERE id = ?")
+                        .bind(inbound.node_id)
+                        .fetch_optional(&self.pool)
+                        .await?;
+                    (inbound.listen_ip.clone(), pub_key)
+                };
+
+                let port = inbound.listen_port;
+                let remark = inbound.tag.clone();
+
+                match inbound.protocol.as_str() {
+                    "vless" => {
+                        // vless://uuid@ip:port?security=...&sni=...&fp=...&type=...#remark
+                        let mut params = Vec::new();
+                        params.push(format!("security={}", stream.security));
+                        
+                        if stream.security == "reality" {
+                            if let Some(reality) = stream.reality_settings {
+                                params.push(format!("sni={}", reality.server_names.first().cloned().unwrap_or_default()));
+                                params.push(format!("pbk={}", reality_pub.unwrap_or_default())); 
+                                params.push("fp=chrome".to_string());
+                            }
+                        } else if stream.security == "tls" {
+                            if let Some(tls) = stream.tls_settings {
+                                params.push(format!("sni={}", tls.server_name));
+                            }
+                        }
+                        
+                        params.push(format!("type={}", stream.network));
+                        
+                        if stream.network == "tcp" {
+                             params.push("headerType=none".to_string());
+                             if stream.security == "reality" {
+                                 params.push("flow=xtls-rprx-vision".to_string());
+                             }
+                        }
+
+                        let link = format!("vless://{}@{}:{}?{}#{}", uuid, address, port, params.join("&"), remark);
+                        links.push(link);
+                    },
+                    "hysteria2" => {
+                        // hysteria2://password@ip:port?sni=...&insecure=1#remark
+                        let mut params = Vec::new();
+                         if stream.security == "tls" {
+                            if let Some(tls) = stream.tls_settings {
+                                params.push(format!("sni={}", tls.server_name));
+                            }
+                        }
+                        params.push("insecure=1".to_string()); // Self-signed usually
+
+                        let link = format!("hysteria2://{}@{}:{}?{}#{}", uuid, address, port, params.join("&"), remark);
+                        links.push(link);
+                    },
+                    _ => {}
+                }
+            }
+        }
+        Ok(links)
+    }
+
     pub async fn generate_subscription_links(&self, user_id: i64) -> Result<Vec<String>> {
         let mut links = Vec::new();
 
