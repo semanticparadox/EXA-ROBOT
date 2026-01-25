@@ -81,6 +81,16 @@ install_dependencies() {
     fi
 }
 
+setup_firewall() {
+    if command -v ufw &> /dev/null; then
+        ufw allow 22/tcp
+        ufw allow 80/tcp
+        ufw allow 443/tcp
+        ufw allow 9090/tcp # Hysteria/VLESS default range start?
+        # Panel port opened later if needed
+    fi
+}
+
 # --------------------------------------------------
 # Conflict Detection
 # --------------------------------------------------
