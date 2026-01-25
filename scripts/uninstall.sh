@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==================================================
-# EXA ROBOT Uninstaller
+# ExaRobot Uninstaller
 # ==================================================
 
 set -e
@@ -8,9 +8,13 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+INSTALL_DIR="/opt/exarobot"
+
+log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
 check_root() {
@@ -23,41 +27,90 @@ check_root() {
 main() {
     check_root
     
+    echo -e "${RED}!!! WARNING !!!${NC}"
+    echo "This will uninstall ExaRobot components."
+    echo ""
     echo "Select components to uninstall:"
-    echo "1) Panel only"
-    echo "2) Agent only"
-    echo "3) Both"
-    read -p "Choice [1-3]: " CHOICE
-            
-    case $CHOICE in
-        1|3)
-            log_info "Stopping and removing Panel..."
-            systemctl stop exarobot-panel || true
-            systemctl disable exarobot-panel || true
-            rm -f /etc/systemd/system/exarobot-panel.service
-            rm -rf /opt/exarobot/panel
-            ;;
-    esac
+    echo "1) Panel (Service, Binary, Config)"
+    echo "2) Agent (Service, Binary, Config)"
+    echo "3) Everything (Completely remove /opt/exarobot)"
+    echo "4) Cancel"
+    read -p "Choice [1-4]: " CHOICE
     
-    case $CHOICE in
-        2|3)
-            log_info "Stopping and removing Agent..."
+    [[ "$CHOICE" == "4" ]] && exit 0
+    
+    # Panel
+    if [[ "$CHOICE" == "1" || "$CHOICE" == "3" ]]; then
+        if systemctl is-active --quiet exarobot-panel; then
+            log_info "Stopping Panel service..."
+            systemctl stop exarobot-panel || true
+        fi
+        log_info "Disabling Panel service..."
+        systemctl disable exarobot-panel || true
+        rm -f /etc/systemd/system/exarobot-panel.service
+        
+        log_info "Removing Panel binary..."
+        rm -f "$INSTALL_DIR/exarobot"
+        
+        # Only remove config/db if requested or explicit?
+        # Option 3 implies everything. Option 1 implies just "Panel component"
+        if [[ "$CHOICE" == "3" ]]; then
+             # handled at end
+             true
+        else
+             read -p "Remove Panel Database and Config? (y/N): " RMPANEL
+             if [[ "$RMPANEL" == "y" ]]; then
+                rm -f "$INSTALL_DIR/exarobot.db"
+                rm -f "$INSTALL_DIR/.env"
+                log_info "Panel data removed."
+             fi
+        fi
+    fi
+    
+    # Agent
+    if [[ "$CHOICE" == "2" || "$CHOICE" == "3" ]]; then
+        if systemctl is-active --quiet exarobot-agent; then
+            log_info "Stopping Agent service..."
             systemctl stop exarobot-agent || true
-            systemctl disable exarobot-agent || true
-            rm -f /etc/systemd/system/exarobot-agent.service
-            rm -rf /opt/exarobot/agent
-            ;;
-    esac
+        fi
+        log_info "Disabling Agent service..."
+        systemctl disable exarobot-agent || true
+        rm -f /etc/systemd/system/exarobot-agent.service
+        
+        # Remove Sing-box override
+        rm -f /etc/systemd/system/sing-box.service.d/override.conf
+        rmdir /etc/systemd/system/sing-box.service.d 2>/dev/null || true
+        
+        log_info "Removing Agent binary..."
+        rm -f "$INSTALL_DIR/exarobot-agent"
+        
+        if [[ "$CHOICE" != "3" ]]; then
+             read -p "Remove Agent Config? (y/N): " RMAGENT
+             if [[ "$RMAGENT" == "y" ]]; then
+                rm -f "$INSTALL_DIR/.env.agent"
+                log_info "Agent data removed."
+             fi
+        fi
+    fi
     
     systemctl daemon-reload
     
-    read -p "Remove source code from /opt/exarobot? (y/N): " REMOVE_SRC
-    if [[ "$REMOVE_SRC" == "y" ]]; then
-        rm -rf /opt/exarobot
-        log_info "Source code removed"
+    # Full Cleanup
+    if [[ "$CHOICE" == "3" ]]; then
+        read -p "Are you sure you want to delete ALL data in $INSTALL_DIR? (y/N): " CONFIRM
+        if [[ "$CONFIRM" == "y" ]]; then
+            log_info "Removing directory $INSTALL_DIR..."
+            rm -rf "$INSTALL_DIR"
+            log_success "All ExaRobot files removed."
+        else
+            log_info "Skipping directory removal."
+        fi
+    else
+        # Try to remove dir if empty
+        rmdir "$INSTALL_DIR" 2>/dev/null || true
     fi
     
-    log_info "Uninstallation complete"
+    log_success "Uninstallation process finished."
 }
 
 main "$@"

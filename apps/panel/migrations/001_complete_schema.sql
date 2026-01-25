@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     domain TEXT,
     -- Smart Setup
     join_token TEXT,
-    join_token TEXT,
+
     auto_configure BOOLEAN DEFAULT 0,
     is_enabled BOOLEAN DEFAULT 1 -- Added in v1.1
 );

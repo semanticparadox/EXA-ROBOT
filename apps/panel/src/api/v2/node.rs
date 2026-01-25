@@ -71,11 +71,7 @@ pub async fn heartbeat(
         .bind(node.id)
         .execute(&state.pool)
         .await;
-        .bind(new_status)
-        .bind(remote_ip)
-        .bind(node.id)
-        .execute(&state.pool)
-        .await;
+
     
     // 4. Check if config update is needed (hash mismatch)
     (StatusCode::OK, Json(HeartbeatResponse {

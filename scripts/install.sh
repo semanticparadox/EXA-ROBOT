@@ -1,12 +1,19 @@
 #!/bin/bash
 # ==================================================
-# EXA ROBOT Universal Installer
+# ExaRobot Universal Installer
 # ==================================================
-# Installs Panel and/or Agent from GitHub
-# Target OS: Debian 12+
+# Supports:
+# - Clean install (binaries only) via --clean
+# - Source install (default)
+# - Panel/Agent/Both via --role
 # ==================================================
 
 set -e
+
+# Configuration
+REPO_URL="https://github.com/semanticparadox/EXA-ROBOT.git"
+INSTALL_DIR="/opt/exarobot"
+TEMP_BUILD_DIR="/tmp/exarobot_build"
 
 # Colors
 RED='\033[0;31m'
@@ -15,12 +22,25 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Functions
+# Defaults
+CLEAN_INSTALL=false
+ROLE=""
+PANEL_URL=""
+NODE_TOKEN=""
+DOMAIN=""
+ADMIN_PATH="/admin"
+
+# --------------------------------------------------
+# Logging
+# --------------------------------------------------
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# --------------------------------------------------
+# Pre-checks
+# --------------------------------------------------
 check_root() {
     if [ "$EUID" -ne 0 ]; then
         log_error "Please run as root"
@@ -33,239 +53,217 @@ detect_os() {
         log_error "Cannot detect OS"
         exit 1
     fi
-    
     source /etc/os-release
-    
     if [[ "$ID" != "debian" && "$ID" != "ubuntu" ]]; then
-        log_warn "This script is designed for Debian/Ubuntu"
-        log_warn "Your OS: $ID $VERSION_ID"
+        log_warn "Designed for Debian/Ubuntu. Found: $ID"
         read -p "Continue anyway? (y/N): " choice
         [[ "$choice" != "y" ]] && exit 1
     fi
-    
-    log_success "OS detected: $PRETTY_NAME"
 }
 
+# --------------------------------------------------
+# Dependency Installation
+# --------------------------------------------------
 install_dependencies() {
     log_info "Installing dependencies..."
-    
-    setup_firewall # Run firewall setup early but safely
+    setup_firewall
     
     apt-get update -qq
     apt-get install -y curl git build-essential pkg-config libssl-dev sqlite3 -qq
     
-    # Install Rust if not present
     if ! command -v cargo &> /dev/null; then
         log_info "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         source "$HOME/.cargo/env"
-        log_success "Rust installed"
     else
         log_success "Rust already installed"
     fi
 }
 
-setup_firewall() {
-    log_info "Configuring firewall..."
-    if command -v ufw &> /dev/null; then
-        ufw allow 22/tcp
-        ufw allow 80/tcp
-        ufw allow 443/tcp
-        ufw allow 9090/tcp
-        ufw allow 3000/tcp # Panel
-        log_success "Firewall rules updated (UFW)"
-    else
-        log_warn "UFW not found. Please manually allow ports: 22, 80, 443, 9090, 3000"
+# --------------------------------------------------
+# Conflict Detection
+# --------------------------------------------------
+check_conflicts() {
+    local clash=false
+    
+    # Check if services are running
+    if systemctl is-active --quiet exarobot-panel; then
+        log_warn "Service 'exarobot-panel' is currently running."
+        clash=true
+    fi
+    if systemctl is-active --quiet exarobot-agent; then
+        log_warn "Service 'exarobot-agent' is currently running."
+        clash=true
+    fi
+    
+    # Check Ports (only if we know them, e.g. default 3000)
+    # If lsof or ss is available
+    if command -v ss &> /dev/null; then
+        if ss -tuln | grep -q ":3000 "; then
+             log_warn "Port 3000 is in use (Panel default)."
+             clash=true
+        fi
+    fi
+    
+    if [ "$clash" = true ]; then
+        echo ""
+        echo -e "${RED}Conflicts detected!${NC}"
+        echo "It seems a previous installation or another service is running."
+        read -p "Do you want to stop existing services and overwrite? (y/N): " OVERWRITE
+        if [[ "$OVERWRITE" == "y" ]]; then
+            log_info "Stopping services..."
+            systemctl stop exarobot-panel || true
+            systemctl stop exarobot-agent || true
+            # Kill by port if needed? Maybe too aggressive.
+        else
+            log_error "Installation aborted by user."
+            exit 1
+        fi
     fi
 }
 
-clone_repository() {
-    REPO_URL="https://github.com/semanticparadox/EXA-ROBOT.git"
-    INSTALL_DIR="/opt/exarobot"
+
+# --------------------------------------------------
+# Building
+# --------------------------------------------------
+build_binaries() {
+    local target_role=$1
+    local src_dir=$2
     
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        log_info "Repository exists, resetting to latest..."
-        cd "$INSTALL_DIR"
-        git fetch --all
-        git reset --hard origin/main
-    else
-        log_info "Cloning repository..."
-        git clone "$REPO_URL" "$INSTALL_DIR"
-        cd "$INSTALL_DIR"
+    log_info "Building binaries from $src_dir..."
+    cd "$src_dir"
+    
+    # Init dummy DB for build macros if needed
+    if [[ "$target_role" == "panel" || "$target_role" == "both" ]]; then
+        if [ ! -f "build_db.sqlite" ]; then
+            touch build_db.sqlite
+            export DATABASE_URL="sqlite://build_db.sqlite"
+            if [ -f "apps/panel/migrations/001_complete_schema.sql" ]; then
+                sqlite3 build_db.sqlite < apps/panel/migrations/001_complete_schema.sql
+            fi
+        fi
+        
+        log_info "Compiling Panel..."
+        cargo build -p exarobot --release --quiet
     fi
     
-    log_success "Repository ready at $INSTALL_DIR"
+    if [[ "$target_role" == "agent" || "$target_role" == "both" ]]; then
+        log_info "Compiling Agent..."
+        cargo build -p exarobot-agent --release --quiet
+    fi
 }
 
-install_panel() {
-    log_info "=== Installing Panel ==="
-    
-    # Prompt for configuration
+# --------------------------------------------------
+# Installation Logic
+# --------------------------------------------------
+setup_directory() {
+    mkdir -p "$INSTALL_DIR"
+    # Files are kept in root: /opt/exarobot/{exarobot, exarobot-agent, .env, .env.agent}
+}
+
+configure_panel() {
+    # Interactive Prompts
     if [[ -z "$DOMAIN" ]]; then
         read -p "Enter server domain (e.g. panel.example.com): " DOMAIN </dev/tty
     fi
-    
-    if [[ -z "$ADMIN_PATH" ]]; then
-        read -p "Enter admin path [/admin]: " ADMIN_PATH </dev/tty
-        ADMIN_PATH=${ADMIN_PATH:-/admin}
-    fi
-    
     if [[ -z "$PANEL_PORT" ]]; then
         read -p "Enter Panel Port [3000]: " PANEL_PORT </dev/tty
         PANEL_PORT=${PANEL_PORT:-3000}
     fi
     
-    # Create directories FIRST
-    mkdir -p /opt/exarobot/panel
+    # Firewall
+    if command -v ufw &> /dev/null; then
+        ufw allow $PANEL_PORT/tcp
+    fi
     
-    # Create .env FIRST (needed for build macros)
-    cat > /opt/exarobot/panel/.env <<EOF
+    # Environment File
+    # Check if exists to avoid overwrite?
+    ENV_FILE="$INSTALL_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        log_info "Creating $ENV_FILE..."
+        cat > "$ENV_FILE" <<EOF
 SERVER_DOMAIN=$DOMAIN
 ADMIN_PATH=$ADMIN_PATH
 PANEL_PORT=$PANEL_PORT
-DATABASE_URL=sqlite:///opt/exarobot/panel/db.sqlite
+DATABASE_URL=sqlite://$INSTALL_DIR/exarobot.db
 BOT_TOKEN=
 PAYMENT_API_KEY=
 NOWPAYMENTS_KEY=
 EOF
-
-    # Configure firewall specifically for Panel
-    if command -v ufw &> /dev/null; then
-        log_info "Opening Panel port $PANEL_PORT..."
-        ufw allow $PANEL_PORT/tcp
-    fi
-
-    # Initialize database FIRST (needed for build macros)
-    log_info "Initializing database for build verification..."
-    export DATABASE_URL=sqlite:///opt/exarobot/panel/db.sqlite
-    
-    # Create DB file
-    touch /opt/exarobot/panel/db.sqlite
-    
-    # Note: We consolidated migrations into 001_complete_schema.sql for simple server installation.
-    # This avoids needing sqlx-cli on the server.
-    log_info "Applying database schema..."
-    if [ -f "apps/panel/migrations/001_complete_schema.sql" ]; then
-        sqlite3 /opt/exarobot/panel/db.sqlite < apps/panel/migrations/001_complete_schema.sql
-        log_success "Schema applied successfully"
     else
-        log_error "Schema file not found! Cannot build."
-        exit 1
+        log_warn "$ENV_FILE exists. Skipping creation."
     fi
-
-    # Build panel (Online Mode)
-    log_info "Building panel..."
-    cd /opt/exarobot
-    export SQLX_OFFLINE=false
-    cargo build -p exarobot --release --quiet
     
-    # Copy binary
-    cp target/release/exarobot /opt/exarobot/panel/
+    # Database
+    DB_FILE="$INSTALL_DIR/exarobot.db"
+    if [ ! -f "$DB_FILE" ]; then
+        log_info "Initializing database..."
+        touch "$DB_FILE"
+        # We rely on binary embedded migrations usually, but for safety lets try apply schema if we have source
+        # If clean install, we might not have migrations folder handy easily unless we use the temp path
+        if [ -f "$TEMP_BUILD_DIR/apps/panel/migrations/001_complete_schema.sql" ]; then
+             sqlite3 "$DB_FILE" < "$TEMP_BUILD_DIR/apps/panel/migrations/001_complete_schema.sql"
+        elif [ -f "$INSTALL_DIR/source/apps/panel/migrations/001_complete_schema.sql" ]; then
+             sqlite3 "$DB_FILE" < "$INSTALL_DIR/source/apps/panel/migrations/001_complete_schema.sql"
+        fi
+    fi
     
-    # Create systemd service
+    # Service
     cat > /etc/systemd/system/exarobot-panel.service <<EOF
 [Unit]
-Description=EXA ROBOT VPN Control Panel
+Description=VPN Control Panel
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/exarobot/panel
-ExecStart=/opt/exarobot/panel/exarobot serve
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/exarobot serve
 Restart=always
 RestartSec=5s
-EnvironmentFile=/opt/exarobot/panel/.env
+EnvironmentFile=$ENV_FILE
 
 [Install]
 WantedBy=multi-user.target
 EOF
-    
-    # Start service
+
     systemctl daemon-reload
     systemctl enable exarobot-panel
     systemctl restart exarobot-panel
-    
-    log_success "Panel installed and started"
-    log_info "Access at: https://$DOMAIN$ADMIN_PATH/login"
-    log_info "Default credentials: admin / admin123"
-    log_warn "CHANGE PASSWORD IMMEDIATELY!"
+    log_success "Panel installed. Access: https://$DOMAIN$ADMIN_PATH/login"
 }
 
-install_agent() {
-    log_info "=== Installing Agent ==="
-    
-    # Prompt for configuration if not set
+configure_agent() {
     if [[ -z "$PANEL_URL" ]]; then
-        while true; do
-            read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL </dev/tty
-            # Remove trailing slash
-            PANEL_URL=${PANEL_URL%/}
-            
-            # Add protocol if missing
-            if [[ ! "$PANEL_URL" =~ ^http(s)?:// ]]; then
-                 PANEL_URL="https://$PANEL_URL"
-            fi
-            
-            if [[ -n "$PANEL_URL" ]]; then
-                break
-            fi
-            log_error "Panel URL cannot be empty"
-        done
+        read -p "Enter Panel URL (e.g. https://panel.example.com): " PANEL_URL </dev/tty
     fi
-    
     if [[ -z "$NODE_TOKEN" ]]; then
-        read -p "Enter Node Token (from panel): " NODE_TOKEN </dev/tty
+        read -p "Enter Node Token: " NODE_TOKEN </dev/tty
     fi
     
-    # Build agent
-    log_info "Building agent..."
-    cd /opt/exarobot
-    cargo build -p exarobot-agent --release --quiet
-    
-    # Create directories
-    mkdir -p /opt/exarobot/agent
-    cp target/release/exarobot-agent /opt/exarobot/agent/
-    
-    # Create .env
-    cat > /opt/exarobot/agent/.env <<EOF
+    # Agent Env
+    AGENT_ENV="$INSTALL_DIR/.env.agent"
+    cat > "$AGENT_ENV" <<EOF
 PANEL_URL=$PANEL_URL
 NODE_TOKEN=$NODE_TOKEN
 CONFIG_PATH=/etc/sing-box/config.json
 EOF
-    
-    # Install sing-box
-    log_info "Installing sing-box..."
-    curl -fsSL https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
-    chmod a+r /etc/apt/keyrings/sagernet.asc
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/sagernet.asc] https://deb.sagernet.org/ * *" | \
-        tee /etc/apt/sources.list.d/sagernet.list > /dev/null
-    apt-get update -qq
-    apt-get install -y sing-box -qq
-    systemctl stop sing-box
-    systemctl disable sing-box
-    
-    # Create systemd service
-    cat > /etc/systemd/system/exarobot-agent.service <<EOF
-[Unit]
-Description=EXA ROBOT Node Agent
-After=network.target
-Before=sing-box.service
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/exarobot/agent
-ExecStart=/opt/exarobot/agent/exarobot-agent
-Restart=always
-RestartSec=10s
-EnvironmentFile=/opt/exarobot/agent/.env
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    # Sing-box
+    if ! command -v sing-box &> /dev/null; then
+        log_info "Installing sing-box..."
+         curl -fsSL https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
+        chmod a+r /etc/apt/keyrings/sagernet.asc
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/sagernet.asc] https://deb.sagernet.org/ * *" | \
+            tee /etc/apt/sources.list.d/sagernet.list > /dev/null
+        apt-get update -qq
+        apt-get install -y sing-box -qq
+        systemctl stop sing-box
+        systemctl disable sing-box
+    fi
     
-    # Create sing-box service override
+    # Service
+    # Note: We override sing-box service dependency
     mkdir -p /etc/systemd/system/sing-box.service.d
     cat > /etc/systemd/system/sing-box.service.d/override.conf <<EOF
 [Unit]
@@ -276,111 +274,118 @@ Wants=exarobot-agent.service
 ExecStart=
 ExecStart=/usr/bin/sing-box run -c /etc/sing-box/config.json
 EOF
-    
-    # Start service
+
+    cat > /etc/systemd/system/exarobot-agent.service <<EOF
+[Unit]
+Description=VPN Node Agent
+After=network.target
+Before=sing-box.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/exarobot-agent
+Restart=always
+RestartSec=10s
+EnvironmentFile=$AGENT_ENV
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
     systemctl daemon-reload
     systemctl enable exarobot-agent
-    systemctl start exarobot-agent
-    
-    log_success "Agent installed and started"
-    log_info "Agent will fetch config from panel automatically"
+    systemctl restart exarobot-agent
+    log_success "Agent installed."
 }
 
+# --------------------------------------------------
+# Main Logic
+# --------------------------------------------------
 main() {
-    echo -e "${CYAN}===================================================${NC}"
-    echo -e "${CYAN}     EXA ROBOT Universal Installer                ${NC}"
-    echo -e "${CYAN}===================================================${NC}"
-    echo ""
-    
     check_root
     detect_os
     
-    # Parse arguments
+    # Parse Args
     while [[ "$#" -gt 0 ]]; do
         case $1 in
+            --clean) CLEAN_INSTALL=true ;;
             --role) ROLE="$2"; shift ;;
             --panel) PANEL_URL="$2"; shift ;;
             --token) NODE_TOKEN="$2"; shift ;;
             --domain) DOMAIN="$2"; shift ;;
             --admin-path) ADMIN_PATH="$2"; shift ;;
-            *) echo "Unknown parameter passed: $1"; exit 1 ;;
+            *) echo "Unknown parameter: $1"; exit 1 ;;
         esac
         shift
     done
-
-    install_dependencies
-    clone_repository
     
-    # Non-interactive mode
-    if [[ -n "$ROLE" ]]; then
-        case $ROLE in
-            panel)
-                if [[ -z "$DOMAIN" ]]; then
-                    read -p "Enter server domain (e.g. panel.example.com): " DOMAIN </dev/tty
-                fi
-                install_panel
-                ;;
-            agent)
-                if [[ -z "$PANEL_URL" || -z "$NODE_TOKEN" ]]; then
-                    log_error "--panel and --token are required for agent role"
-                    exit 1
-                fi
-                install_agent
-                ;;
-            both)
-                install_panel
-                echo ""
-                install_agent
-                ;;
-            *)
-                log_error "Invalid role: $ROLE (use panel, agent, or both)"
-                exit 1
-                ;;
+    if [[ -z "$ROLE" ]]; then
+        echo "Select installation role:"
+        echo "1) Panel"
+        echo "2) Agent"
+        echo "3) Both"
+        read -p "Choice [1-3]: " C </dev/tty
+        case $C in
+            1) ROLE="panel" ;;
+            2) ROLE="agent" ;;
+            3) ROLE="both" ;;
+            *) exit 1 ;;
         esac
-        
-        echo ""
-        log_success "Installation complete!"
-        exit 0
     fi
     
-    echo ""
-    echo "Select components to install:"
-    echo "1) Panel only"
-    echo "2) Agent only"
-    echo "3) Both Panel and Agent"
-    read -p "Choice [1-3]: " CHOICE </dev/tty
     
-    case $CHOICE in
-        1)
-            install_panel
-            ;;
-        2)
-            install_agent
-            ;;
-        3)
-            install_panel
-            echo ""
-            install_agent
-            ;;
-        *)
-            log_error "Invalid choice"
-            exit 1
-            ;;
-    esac
+    check_conflicts
     
-    echo ""
-    log_success "Installation complete!"
-    echo ""
-    echo "Useful commands:"
-    if [[ "$CHOICE" == "1" || "$CHOICE" == "3" ]]; then
-        echo "  Panel status:  systemctl status exarobot-panel"
-        echo "  Panel logs:    journalctl -u exarobot-panel -f"
+    install_dependencies
+    
+    BUILD_SOURCE=""
+    
+    if [ "$CLEAN_INSTALL" = true ]; then
+        log_info "Starting Clean Install (No source on server)..."
+        rm -rf "$TEMP_BUILD_DIR"
+        git clone "$REPO_URL" "$TEMP_BUILD_DIR"
+        BUILD_SOURCE="$TEMP_BUILD_DIR"
+    else
+        log_info "Starting Standard Install (Source kept)..."
+        SOURCE_DIR="$INSTALL_DIR/source"
+        if [ ! -d "$SOURCE_DIR" ]; then
+            git clone "$REPO_URL" "$SOURCE_DIR"
+        else
+            cd "$SOURCE_DIR" && git pull
+        fi
+        BUILD_SOURCE="$SOURCE_DIR"
     fi
-    if [[ "$CHOICE" == "2" || "$CHOICE" == "3" ]]; then
-        echo "  Agent status:  systemctl status exarobot-agent"
-        echo "  Agent logs:    journalctl -u exarobot-agent -f"
+    
+    # Build
+    build_binaries "$ROLE" "$BUILD_SOURCE"
+    
+    # Stop existing
+    systemctl stop exarobot-panel || true
+    systemctl stop exarobot-agent || true
+    
+    setup_directory
+    
+    # Copy Binaries
+    if [[ "$ROLE" == "panel" || "$ROLE" == "both" ]]; then
+        cp "$BUILD_SOURCE/target/release/exarobot" "$INSTALL_DIR/"
+        chmod +x "$INSTALL_DIR/exarobot"
+        configure_panel
     fi
-    echo ""
+    
+    if [[ "$ROLE" == "agent" || "$ROLE" == "both" ]]; then
+        cp "$BUILD_SOURCE/target/release/exarobot-agent" "$INSTALL_DIR/"
+        chmod +x "$INSTALL_DIR/exarobot-agent"
+        configure_agent
+    fi
+    
+    # Cleanup Clean Install
+    if [ "$CLEAN_INSTALL" = true ]; then
+        rm -rf "$TEMP_BUILD_DIR"
+    fi
+    
+    log_success "Installation Complete!"
 }
 
 main "$@"
