@@ -270,28 +270,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('referral_bonus_days', '7');
 INSERT OR IGNORE INTO admins (username, password_hash) 
 VALUES ('admin', '$2b$12$K.z2iBv.m6.h7.8.9.a.bcdefghijklmno.pqrstuvwxyz');
 
--- Default Plans
-INSERT OR IGNORE INTO plans (id, name, description, traffic_limit_gb, device_limit, price, is_active, sort_order)
-VALUES 
-(1, 'Basic', 'Perfect for individuals', 50, 1, 999, 1, 1),
-(2, 'Pro', 'For power users', 200, 3, 1999, 1, 2),
-(3, 'Unlimited', 'No limits!', -1, 5, 3999, 1, 3);
 
--- Default Plan Durations
-INSERT OR IGNORE INTO plan_durations (plan_id, duration_days, price, discount_percent, is_active)
-VALUES 
--- Basic
-(1, 30, 999, 0, 1),
-(1, 90, 2699, 10, 1),
-(1, 365, 9999, 17, 1),
--- Pro
-(2, 30, 1999, 0, 1),
-(2, 90, 5399, 10, 1),
-(2, 365, 19999, 17, 1),
--- Unlimited
-(3, 30, 3999, 0, 1),
-(3, 90, 10799, 10, 1),
-(3, 365, 39999, 17, 1);
 
 -- ================================================
 -- POST-SCHEMA UPDATES (Merged for Single-File Install)
