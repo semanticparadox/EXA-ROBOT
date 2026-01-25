@@ -168,9 +168,13 @@ check_conflicts() {
                  rm -f /etc/systemd/system/sing-box.service.d/override.conf
             fi
 
-            # Kill Ports
+            # Kill Ports - AGGRESSIVE
             if command -v fuser &> /dev/null; then
                  fuser -k 3000/tcp || true
+            fi
+            # Use lsof as backup if fuser missed it or not present
+            if command -v lsof &> /dev/null; then
+                 lsof -t -i:3000 | xargs -r kill -9 || true
             fi
             
             # Remove Files - SAFELY
