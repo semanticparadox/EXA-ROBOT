@@ -752,7 +752,7 @@ pub async fn add_plan(
     let mut device_limit: i32 = 3; // Default value
     let mut duration_days: Vec<i32> = Vec::new();
     let mut price: Vec<i64> = Vec::new();
-    let mut traffic_gb: Vec<i32> = Vec::new();
+    let mut traffic_limit_gb: i32 = 0;
 
     for (key, value) in raw_form {
         match key.as_str() {
@@ -773,9 +773,9 @@ pub async fn add_plan(
                     price.push(v);
                 }
             },
-            "traffic_gb" => {
+            "traffic_limit_gb" => {
                 if let Ok(v) = value.parse() {
-                    traffic_gb.push(v);
+                    traffic_limit_gb = v;
                 }
             },
             _ => {}
@@ -793,12 +793,11 @@ pub async fn add_plan(
     };
 
     // 1. Insert Plan
-    // NOTE: We insert dummy values for legacy fields (price, duration_days, traffic_gb)
-    // because the 'plans' table still has these NOT NULL columns from the old schema.
-    // Real data is stored in 'plan_durations'.
-    let plan_id: i64 = match sqlx::query("INSERT INTO plans (name, description, is_active, price, duration_days, traffic_gb, device_limit) VALUES (?, ?, 1, 0, 30, 0, ?) RETURNING id")
+    // Using traffic_limit_gb for the plan
+    let plan_id: i64 = match sqlx::query("INSERT INTO plans (name, description, is_active, price, duration_days, traffic_limit_gb, device_limit) VALUES (?, ?, 1, 0, 30, ?, ?) RETURNING id")
         .bind(&name)
         .bind(&description)
+        .bind(traffic_limit_gb)
         .bind(device_limit)
         .fetch_one(&mut *tx)
         .await {
@@ -813,20 +812,16 @@ pub async fn add_plan(
         };
 
     // 2. Insert Durations
-    // We assume the strict order provided by browser ensures indices align.
-    // If lengths mismatch, we take the minimum length to avoid out-of-bounds.
-    let count = duration_days.len().min(price.len()).min(traffic_gb.len());
+    let count = duration_days.len().min(price.len());
 
     for i in 0..count {
         let days = duration_days[i];
         let p = price[i];
-        let t = traffic_gb[i];
 
-        if let Err(e) = sqlx::query("INSERT INTO plan_durations (plan_id, duration_days, price, traffic_gb) VALUES (?, ?, ?, ?)")
+        if let Err(e) = sqlx::query("INSERT INTO plan_durations (plan_id, duration_days, price) VALUES (?, ?, ?)")
             .bind(plan_id)
             .bind(days)
             .bind(p)
-            .bind(t)
             .execute(&mut *tx)
             .await {
                 error!("Failed to insert plan duration {}: {}", i, e);
@@ -923,10 +918,10 @@ pub async fn update_plan(
 
     let mut name = String::new();
     let mut description = String::new();
-    let mut device_limit: i32 = 3; // Default value
+    let mut device_limit: i32 = 3; 
     let mut duration_days: Vec<i32> = Vec::new();
     let mut price: Vec<i64> = Vec::new();
-    let mut traffic_gb: Vec<i32> = Vec::new();
+    let mut traffic_limit_gb: i32 = 0;
 
     for (key, value) in raw_form {
         match key.as_str() {
@@ -947,9 +942,9 @@ pub async fn update_plan(
                     price.push(v);
                 }
             },
-            "traffic_gb" => {
+            "traffic_limit_gb" => {
                 if let Ok(v) = value.parse() {
-                    traffic_gb.push(v);
+                    traffic_limit_gb = v;
                 }
             },
             _ => {}
@@ -966,10 +961,11 @@ pub async fn update_plan(
     };
 
     // 1. Update Plan
-    if let Err(e) = sqlx::query("UPDATE plans SET name = ?, description = ?, device_limit = ? WHERE id = ?")
+    if let Err(e) = sqlx::query("UPDATE plans SET name = ?, description = ?, device_limit = ?, traffic_limit_gb = ? WHERE id = ?")
         .bind(&name)
         .bind(&description)
         .bind(device_limit)
+        .bind(traffic_limit_gb)
         .bind(id)
         .execute(&mut *tx)
         .await {
@@ -987,22 +983,20 @@ pub async fn update_plan(
         }
 
     // 3. Insert new durations
-    let count = duration_days.len().min(price.len()).min(traffic_gb.len());
+    let count = duration_days.len().min(price.len());
 
     for i in 0..count {
         let days = duration_days[i];
         let p = price[i];
-        let t = traffic_gb[i];
 
-        if let Err(e) = sqlx::query("INSERT INTO plan_durations (plan_id, duration_days, price, traffic_gb) VALUES (?, ?, ?, ?)")
+        if let Err(e) = sqlx::query("INSERT INTO plan_durations (plan_id, duration_days, price) VALUES (?, ?, ?)")
             .bind(id)
             .bind(days)
             .bind(p)
-            .bind(t)
             .execute(&mut *tx)
             .await {
-                error!("Failed to insert plan duration {}: {}", i, e);
-                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to update plan durations").into_response();
+                error!("Failed to insert duration: {}", e);
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to insert duration: {}", e)).into_response();
             }
     }
 

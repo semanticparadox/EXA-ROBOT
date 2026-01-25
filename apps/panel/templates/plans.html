@@ -98,19 +98,17 @@
                             {% endif %}
                         </strong>
                         simultaneous connections
+                    </small><br>
+                    <small>📊 Traffic Limit:
+                        <strong>{{ plan.traffic_limit_gb }} GB</strong>
                     </small>
                 </p>
 
                 <div class="durations-list">
                     {% for dur in plan.durations %}
                     <div class="duration-item">
-                        {% if dur.duration_days == 0 %}
-                        <span class="badge traffic-plan">🚀 Traffic Plan</span>
-                        {% else %}
                         <span class="badge success">{{ dur.duration_days }}d</span>
-                        {% endif %}
                         <strong>${{ dur.price / 100 }}</strong>
-                        <small>({{ dur.traffic_gb }}GB)</small>
                     </div>
                     {% endfor %}
                 </div>
@@ -143,16 +141,12 @@
         row.className = 'duration-row grid';
         row.innerHTML = `
                 <div>
-                    <label>Days (0 for Traffic Plan)</label>
-                    <input type="number" name="duration_days" placeholder="0" min="0" required>
+                    <label>Days</label>
+                    <input type="number" name="duration_days" placeholder="30" min="1" required>
                 </div>
                 <div>
                     <label>Price (Cents)</label>
                     <input type="number" name="price" placeholder="Price (c)" required>
-                </div>
-                <div>
-                    <label>Traffic (GB)</label>
-                    <input type="number" name="traffic_gb" placeholder="Traffic GB" required>
                 </div>
             `;
         container.appendChild(row);
@@ -174,24 +168,27 @@
             <label for="description">Description</label>
             <textarea id="description" name="description" placeholder="Best for personal use..."></textarea>
 
-            <label for="device_limit">Device Limit (0 for Unlimited)</label>
-            <input type="number" id="device_limit" name="device_limit" value="3" min="0" max="1000" required>
-            <small>Maximum number of simultaneous device connections (0-1000)</small>
+            <div class="grid">
+                <div>
+                    <label for="device_limit">Device Limit (0=Unlimited)</label>
+                    <input type="number" id="device_limit" name="device_limit" value="3" min="0" max="1000" required>
+                </div>
+                <div>
+                    <label for="traffic_limit_gb">Traffic Limit (GB)</label>
+                    <input type="number" id="traffic_limit_gb" name="traffic_limit_gb" value="100" min="0" required>
+                </div>
+            </div>
 
-            <label for="traffic_gb">Durations</label>
+            <label for="durations-container">Durations</label>
             <div id="durations-container">
                 <div class="duration-row grid">
                     <div>
-                        <label>Days (0 = Traffic Plan)</label>
-                        <input type="number" name="duration_days" value="30" min="0" required>
+                        <label>Days</label>
+                        <input type="number" name="duration_days" value="30" min="1" required>
                     </div>
                     <div>
                         <label>Price (Cents)</label>
                         <input type="number" name="price" value="500" required>
-                    </div>
-                    <div>
-                        <label>Traffic (GB)</label>
-                        <input type="number" name="traffic_gb" value="100" required>
                     </div>
                 </div>
             </div>

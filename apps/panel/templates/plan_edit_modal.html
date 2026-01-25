@@ -11,18 +11,26 @@
         required>{{ plan.description.as_deref().unwrap_or("") }}</textarea>
 
     <label for="edit_device_limit">Device Limit (0 for Unlimited)</label>
-    <input type="number" id="edit_device_limit" name="device_limit" value="{{ plan.device_limit }}" min="0" max="1000"
-        required>
-    <small>Maximum number of simultaneous device connections (0-1000)</small>
+    <div class="grid">
+        <div>
+            <input type="number" id="edit_device_limit" name="device_limit" value="{{ plan.device_limit }}" min="0"
+                max="1000" required>
+            <small>Max connections</small>
+        </div>
+        <div>
+            <input type="number" id="edit_traffic_limit_gb" name="traffic_limit_gb" style="margin-bottom:0;"
+                value="{{ plan.traffic_limit_gb }}" min="0" required>
+            <small>Traffic Limit (GB)</small>
+        </div>
+    </div>
 
     <label>Durations</label>
     <div id="edit-durations-container">
         {% for dur in plan.durations %}
         <div class="duration-row grid">
-            <input type="number" name="duration_days" value="{{ dur.duration_days }}"
-                placeholder="Days (0 = Traffic Plan)" min="0" required>
+            <input type="number" name="duration_days" value="{{ dur.duration_days }}" placeholder="Days" min="1"
+                required>
             <input type="number" name="price" value="{{ dur.price }}" placeholder="Price (c)" required>
-            <input type="number" name="traffic_gb" value="{{ dur.traffic_gb }}" placeholder="Traffic (GB)" required>
             <button type="button" class="outline contrast" onclick="this.parentElement.remove()">×</button>
         </div>
         {% endfor %}
@@ -41,9 +49,8 @@
         const row = document.createElement('div');
         row.className = 'duration-row grid';
         row.innerHTML = `
-            <input type="number" name="duration_days" placeholder="Days (0 = Traffic Plan)" min="0" required>
+            <input type="number" name="duration_days" placeholder="Days" min="1" required>
             <input type="number" name="price" placeholder="Price (c)" required>
-            <input type="number" name="traffic_gb" placeholder="Traffic (GB)" required>
             <button type="button" class="outline contrast" onclick="this.parentElement.remove()">×</button>
         `;
         container.appendChild(row);

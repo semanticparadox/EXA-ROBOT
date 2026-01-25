@@ -641,9 +641,9 @@ impl StoreService {
                 let actual_days = (sub.expires_at - sub.created_at).num_days();
                 
                 // Find PlanDuration with closest duration_days
-                let best_dur = p.durations.iter().min_by_key(|d| (d.duration_days as i64 - actual_days).abs());
+                let _best_dur = p.durations.iter().min_by_key(|d| (d.duration_days as i64 - actual_days).abs());
                 
-                let limit = best_dur.map(|d| d.traffic_gb);
+                let limit = Some(p.traffic_limit_gb);
                 
                 (p.name.clone(), p.description.clone(), limit)
             } else {
