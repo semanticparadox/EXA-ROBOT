@@ -1097,7 +1097,7 @@ impl StoreService {
 
                         // Fix: Sing-box implementation uses users list with name=user_{id} and password=uuid
                         // Client must provide user:password format
-                        let auth = format!("user_{}:{}", sub.user_id, uuid);
+                        let auth = format!("user_{}:{}", sub.sub.user_id, uuid);
 
                         let link = format!("hysteria2://{}@{}:{}?{}#{}", auth, address, port, params.join("&"), remark);
                         links.push(link);
