@@ -19,6 +19,7 @@ pub struct CategoriesTemplate {
     pub categories: Vec<Category>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -28,6 +29,7 @@ pub struct ProductsTemplate {
     pub categories: Vec<Category>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -36,6 +38,7 @@ pub struct OrdersTemplate {
     pub orders: Vec<Order>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 // --- Forms ---
@@ -60,7 +63,7 @@ pub async fn categories_page(
     let categories = state.store_service.get_categories().await.unwrap_or_default();
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
-    Html(CategoriesTemplate { categories, is_auth: true, admin_path }.render().unwrap())
+    Html(CategoriesTemplate { categories, is_auth: true, admin_path, active_page: "orders".to_string() }.render().unwrap())
 }
 
 pub async fn add_category(
@@ -129,8 +132,7 @@ pub async fn products_page(
     let categories = state.store_service.get_categories().await.unwrap_or_default();
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
-
-    Html(ProductsTemplate { products, categories, is_auth: true, admin_path }.render().unwrap())
+    Html(ProductsTemplate { products, categories, is_auth: true, admin_path, active_page: "orders".to_string() }.render().unwrap())
 }
 
 pub async fn add_product(
@@ -244,5 +246,5 @@ pub async fn orders_page(
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
 
-    Html(OrdersTemplate { orders, is_auth: true, admin_path }.render().unwrap())
+    Html(OrdersTemplate { orders, is_auth: true, admin_path, active_page: "orders".to_string() }.render().unwrap())
 }

@@ -18,6 +18,7 @@ pub struct NodeInboundsTemplate {
     pub inbounds: Vec<Inbound>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 pub async fn get_node_inbounds(
@@ -45,6 +46,7 @@ pub async fn get_node_inbounds(
                     let p = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
                     if p.starts_with('/') { p } else { format!("/{}", p) }
                 },
+                active_page: "nodes".to_string(),
             };
             Html(template.render().unwrap_or_default()).into_response()
         },
@@ -135,6 +137,7 @@ pub struct PlanBindingsTemplate {
     pub bindings: Vec<NodeBindingGroup>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 pub struct NodeBindingGroup {
@@ -192,7 +195,7 @@ pub async fn get_plan_bindings(
 
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
-    Html(PlanBindingsTemplate { plan, bindings, is_auth: true, admin_path }.render().unwrap_or_default()).into_response()
+    Html(PlanBindingsTemplate { plan, bindings, is_auth: true, admin_path, active_page: "plans".to_string() }.render().unwrap_or_default()).into_response()
 }
 
 pub async fn save_plan_bindings(

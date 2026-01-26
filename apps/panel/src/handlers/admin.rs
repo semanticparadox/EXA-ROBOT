@@ -24,6 +24,7 @@ pub struct SettingsTemplate {
     pub terms_of_service: String,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 
@@ -41,6 +42,7 @@ pub struct DashboardTemplate {
     pub is_auth: bool,
     pub activities: Vec<crate::models::activity::Activity>,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -56,6 +58,7 @@ pub struct NodesTemplate {
     pub nodes: Vec<Node>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -64,6 +67,7 @@ pub struct PlansTemplate {
     pub plans: Vec<Plan>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 
@@ -74,6 +78,7 @@ pub struct UsersTemplate {
     pub search: String,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -81,6 +86,7 @@ pub struct UsersTemplate {
 pub struct LoginTemplate {
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -88,6 +94,7 @@ pub struct LoginTemplate {
 pub struct BotLogsTemplate {
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Template)]
@@ -96,6 +103,7 @@ pub struct TransactionsTemplate {
     pub orders: Vec<OrderWithUser>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 pub struct OrderWithUser {
@@ -133,6 +141,7 @@ pub async fn get_login() -> impl IntoResponse {
     let template = LoginTemplate { 
         is_auth: false,
         admin_path,
+        active_page: "login".to_string(),
     };
     Html(template.render().unwrap_or_default())
 }
@@ -261,6 +270,7 @@ pub async fn get_dashboard(State(state): State<AppState>) -> impl IntoResponse {
             let p = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
             if p.starts_with('/') { p } else { format!("/{}", p) }
         },
+        active_page: "dashboard".to_string(),
     };
     
     match template.render() {
@@ -340,6 +350,7 @@ pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
         terms_of_service,
         is_auth: true,
         admin_path: std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string()),
+        active_page: "settings".to_string(),
     };
     
     match template.render() {
@@ -450,6 +461,7 @@ pub async fn get_nodes(State(state): State<AppState>) -> impl IntoResponse {
             let p = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
             if p.starts_with('/') { p } else { format!("/{}", p) }
         },
+        active_page: "nodes".to_string(),
     };
     Html(template.render().unwrap())
 }
@@ -677,7 +689,7 @@ pub async fn get_plans(State(state): State<AppState>) -> impl IntoResponse {
     let template = PlansTemplate { plans, is_auth: true, admin_path: {
         let p = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
         if p.starts_with('/') { p } else { format!("/{}", p) }
-    }};
+    }, active_page: "plans".to_string() };
     match template.render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
@@ -1022,7 +1034,7 @@ pub async fn get_users(
     let template = UsersTemplate { users, search, is_auth: true, admin_path: {
         let p = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
         if p.starts_with('/') { p } else { format!("/{}", p) }
-    }};
+    }, active_page: "users".to_string() };
     
     match template.render() {
         Ok(html) => Html(html).into_response(),
@@ -1041,6 +1053,7 @@ pub struct UserDetailsTemplate {
     pub available_plans: Vec<Plan>,
     pub is_auth: bool,
     pub admin_path: String,
+    pub active_page: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1380,7 +1393,7 @@ pub async fn bot_logs_page(jar: CookieJar) -> impl IntoResponse {
     }
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
-    Html(BotLogsTemplate { is_auth: true, admin_path }.render().unwrap()).into_response()
+    Html(BotLogsTemplate { is_auth: true, admin_path, active_page: "settings".to_string() }.render().unwrap()).into_response()
 }
 
 
@@ -1566,6 +1579,7 @@ pub async fn get_transactions(
             let p = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
             if p.starts_with('/') { p } else { format!("/{}", p) }
         },
+        active_page: "transactions".to_string(),
     };
 
     match template.render() {
