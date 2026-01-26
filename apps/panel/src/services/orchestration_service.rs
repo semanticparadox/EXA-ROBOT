@@ -28,11 +28,15 @@ impl OrchestrationService {
         let (priv_key, pub_key) = {
             use rand::rngs::OsRng;
             use x25519_dalek::{StaticSecret, PublicKey};
+            use base64::{Engine as _, engine::general_purpose};
             
             // Use StaticSecret which allows exporting bytes easily
             let secret = StaticSecret::random_from_rng(OsRng);
             let public = PublicKey::from(&secret);
-            (base64::encode(secret.to_bytes()), base64::encode(public.as_bytes()))
+            (
+                general_purpose::STANDARD.encode(secret.to_bytes()),
+                general_purpose::STANDARD.encode(public.as_bytes())
+            )
         };
         
         let short_id = hex::encode(&rand::random::<[u8; 8]>());
