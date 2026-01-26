@@ -97,18 +97,32 @@ setup_firewall() {
 check_conflicts() {
     local clash=false
     
-    # Check if services are running
-    if systemctl is-active --quiet exarobot; then
-        clash=true
+    # Check specifically for the requested role
+    if [[ "$ROLE" == "panel" || "$ROLE" == "both" ]]; then
+        if systemctl is-active --quiet exarobot; then
+            clash=true
+        fi
+        if command -v ss &> /dev/null; then
+            local TARGET_PORT=${PANEL_PORT:-3000}
+            if ss -tuln | grep -q ":${TARGET_PORT} "; then
+                 clash=true
+            fi
+        fi
     fi
-    if systemctl is-active --quiet exarobot-agent; then
-        clash=true
+
+    if [[ "$ROLE" == "agent" || "$ROLE" == "both" ]]; then
+        if systemctl is-active --quiet exarobot-agent; then
+            clash=true
+        fi
     fi
-    
-    if command -v ss &> /dev/null; then
-        local TARGET_PORT=${PANEL_PORT:-3000}
-        if ss -tuln | grep -q ":${TARGET_PORT} "; then
-             clash=true
+
+    # Determine if we are just adding a missing role to an existing setup
+    if [ "$clash" = false ]; then
+        if [[ "$ROLE" == "agent" ]] && systemctl is-active --quiet exarobot; then
+            log_info "Panel detected. Installing Agent alongside existing Panel..."
+        fi
+        if [[ "$ROLE" == "panel" ]] && systemctl is-active --quiet exarobot-agent; then
+            log_info "Agent detected. Installing Panel alongside existing Agent..."
         fi
     fi
     
