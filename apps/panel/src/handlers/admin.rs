@@ -1064,8 +1064,8 @@ pub struct SubscriptionWithPlan {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub status: String,
     pub price: i64,
-    pub active_devices: i32,
-    pub device_limit: i32,
+    pub active_devices: i64,
+    pub device_limit: i64,
 }
 
 pub async fn admin_gift_subscription(
@@ -1166,11 +1166,15 @@ pub async fn get_user_details(
 
     // 3. Fetch Order History
     let db_orders = sqlx::query_as::<_, Order>(
-        "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC"
+        "SELECT id, user_id, total_amount, status, created_at, paid_at FROM orders WHERE user_id = ? ORDER BY created_at DESC"
     )
     .bind(id)
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| {
+         error!("Failed to fetch user orders: {}", e);
+         e
+    })
     .unwrap_or_default();
 
     let orders = db_orders.into_iter().map(|o| UserOrderDisplay {

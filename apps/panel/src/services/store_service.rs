@@ -755,9 +755,9 @@ impl StoreService {
                 u.referrer_id,
                 u.is_banned,
                 u.created_at,
-                COALESCE(SUM(rb.amount), 0) as total_earned
+                COALESCE(CAST(SUM(rb.bonus_value) AS INTEGER), 0) as total_earned
             FROM users u
-            LEFT JOIN referral_bonuses rb ON u.id = rb.referred_id AND rb.referrer_id = ?
+            LEFT JOIN referral_bonuses rb ON u.id = rb.referred_user_id AND rb.user_id = ?
             WHERE u.referrer_id = ?
             GROUP BY u.id
             ORDER BY u.created_at DESC
@@ -771,7 +771,7 @@ impl StoreService {
     }
 
     pub async fn get_user_referral_earnings(&self, referrer_id: i64) -> Result<i64> {
-        let total: Option<i64> = sqlx::query_scalar("SELECT SUM(amount) FROM referral_bonuses WHERE referrer_id = ?")
+        let total: Option<i64> = sqlx::query_scalar("SELECT CAST(SUM(bonus_value) AS INTEGER) FROM referral_bonuses WHERE user_id = ?")
             .bind(referrer_id)
             .fetch_one(&self.pool)
             .await

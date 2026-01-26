@@ -140,5 +140,50 @@ pub async fn init_db() -> Result<SqlitePool> {
         }
     }
 
+    // 8. Ensure 'root_password' in nodes (TEXT)
+    let has_root_pass: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('nodes') WHERE name='root_password'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_root_pass {
+        tracing::info!("Applying schema repair: Adding 'root_password' to nodes table");
+        if let Err(e) = sqlx::query("ALTER TABLE nodes ADD COLUMN root_password TEXT").execute(&pool).await {
+             tracing::warn!("Failed to add root_password column: {}", e);
+        }
+    }
+    
+    // 9. Ensure 'join_token' in nodes (TEXT)
+    let has_token: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('nodes') WHERE name='join_token'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_token {
+        tracing::info!("Applying schema repair: Adding 'join_token' to nodes table");
+        if let Err(e) = sqlx::query("ALTER TABLE nodes ADD COLUMN join_token TEXT").execute(&pool).await {
+             tracing::warn!("Failed to add join_token column: {}", e);
+        }
+    }
+    
+    // 10. Ensure 'auto_configure' in nodes (BOOLEAN)
+    let has_auto_conf: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('nodes') WHERE name='auto_configure'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_auto_conf {
+        tracing::info!("Applying schema repair: Adding 'auto_configure' to nodes table");
+        if let Err(e) = sqlx::query("ALTER TABLE nodes ADD COLUMN auto_configure BOOLEAN DEFAULT 0").execute(&pool).await {
+             tracing::warn!("Failed to add auto_configure column: {}", e);
+        }
+    }
+
     Ok(pool)
 }
