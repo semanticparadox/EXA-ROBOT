@@ -394,6 +394,7 @@ After=exarobot-agent.service
 Wants=exarobot-agent.service
 
 [Service]
+Environment="ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true"
 ExecStart=
 ExecStart=/usr/bin/sing-box run -c /etc/sing-box/config.json
 EOF
