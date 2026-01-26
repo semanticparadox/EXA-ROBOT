@@ -44,6 +44,7 @@ impl TrafficService {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn process_node_usage(&self, _node_id: i64, usage: serde_json::Value) -> anyhow::Result<()> {
         if let Some(users_usage) = usage.get("users") {
             if let Some(users_map) = users_usage.as_object() {
