@@ -120,23 +120,8 @@ impl ConfigGenerator {
                 timestamp: true,
             },
             inbounds: generated_inbounds,
-            outbounds: vec![
-                Outbound::Direct { tag: "direct".to_string() },
-                Outbound::Block { tag: "block".to_string() },
-                Outbound::Dns { tag: "dns-out".to_string() },
-            ],
-            // Simplified routing for now
-            route: Some(RouteConfig {
-                rules: vec![
-                     RouteRule {
-                        action: Some("route".to_string()),
-                        outbound: Some("direct".to_string()),
-                        protocol: Some(vec!["dns".to_string()]),
-                        port: None,
-                        domain: None,
-                    },
-                ],
-            }),
+            outbounds: vec![], // No special outbounds needed in modern format
+            route: None, // No routing rules needed - traffic goes direct by default
             // Enable Clash API for device monitoring and limit enforcement
             experimental: Some(ExperimentalConfig {
                 clash_api: ClashApiConfig {
