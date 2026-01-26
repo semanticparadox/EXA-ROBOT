@@ -300,6 +300,8 @@ configure_panel() {
     
     # Install sing-box for key generation (Panel needs it for `sing-box generate reality-keypair`)
     install_singbox
+    systemctl stop sing-box &> /dev/null || true
+    systemctl disable sing-box &> /dev/null || true
     
     # Firewall
     if command -v ufw &> /dev/null; then
@@ -603,6 +605,25 @@ EOF
         cp "$BUILD_SOURCE/target/release/exarobot-agent" "$INSTALL_DIR/"
         chmod +x "$INSTALL_DIR/exarobot-agent"
         configure_agent
+    else
+        # If we ARE NOT an agent, ensure old agent services are gone
+        log_info "Ensuring Agent service is disabled (Role: $ROLE)..."
+        systemctl stop exarobot-agent &> /dev/null || true
+        systemctl disable exarobot-agent &> /dev/null || true
+        # Also stop sing-box if it shouldn't be running as a proxy here
+        # Actually, Panel needs it ONLY for keygen, not as a service
+        systemctl stop sing-box &> /dev/null || true
+        systemctl disable sing-box &> /dev/null || true
+    fi
+    
+    if [[ "$ROLE" == "panel" ]]; then
+        # Ensure we don't have a dangling panel service if we are Agent-only
+        # (Wait, if ROLE is panel we WANT exarobot.service, so this logic needs to be inverse)
+        :
+    elif [[ "$ROLE" == "agent" ]]; then
+        log_info "Ensuring Panel service is disabled (Role: $ROLE)..."
+        systemctl stop exarobot &> /dev/null || true
+        systemctl disable exarobot &> /dev/null || true
     fi
     
     # Cleanup Clean Install

@@ -1010,7 +1010,7 @@ impl StoreService {
                         .await?
                         .unwrap_or(0); // Fallback to 0 if not found (shouldn't happen)
 
-                    let auth = format!("{}:{}", tg_id, uuid);
+                    let auth = format!("{}:{}", tg_id, uuid.replace("-", ""));
 
                     let link = format!("hysteria2://{}@{}:{}?{}#{}", auth, address, port, params.join("&"), remark);
                     links.push(link);
@@ -1136,7 +1136,7 @@ impl StoreService {
                             .await?
                             .unwrap_or(0);
 
-                        let auth = format!("{}:{}", tg_id, uuid);
+                        let auth = format!("{}:{}", tg_id, uuid.replace("-", ""));
 
                         let link = format!("hysteria2://{}@{}:{}?{}#{}", auth, address, port, params.join("&"), remark);
                         links.push(link);

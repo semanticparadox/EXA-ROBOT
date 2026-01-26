@@ -115,7 +115,6 @@ pub struct Hysteria2TlsConfig {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Outbound {
     Direct { tag: String },
-    Block { tag: String },
     Dns { tag: String },
 }
 

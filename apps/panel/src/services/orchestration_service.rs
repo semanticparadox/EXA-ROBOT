@@ -240,7 +240,7 @@ impl OrchestrationService {
                                 info!("🔑 Injecting HYSTERIA user: {} (Pass: {})", auth_name, uuid);
                                 hy2.users.push(Hysteria2User {
                                     name: auth_name,
-                                    password: uuid.clone(),
+                                    password: uuid.replace("-", ""),
                                 });
                             }
                         }
