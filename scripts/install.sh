@@ -101,7 +101,14 @@ setup_firewall() {
         ufw allow 22/tcp
         ufw allow 80/tcp
         ufw allow 443/tcp
-        ufw allow 9090/tcp # Hysteria/VLESS default range start?
+        ufw allow 443/udp # Hysteria/QUIC
+        
+        # Common VPN ports
+        ufw allow 8443/tcp
+        ufw allow 8443/udp
+        ufw allow 2053/tcp
+        ufw allow 2053/udp
+        
         # Panel port opened later if needed
     fi
 }
@@ -397,14 +404,15 @@ EOF
     systemctl stop sing-box &> /dev/null || true
     systemctl disable sing-box &> /dev/null || true
     
-    # Generate self-signed certificates for Hysteria2
-    log_info "Generating TLS certificates for Hysteria2..."
+    # Generate self-signed certificates for Hysteria2 (Check always)
+    log_info "Verifying TLS certificates for Hysteria2..."
     mkdir -p /etc/sing-box/certs
-    if [ ! -f /etc/sing-box/certs/cert.pem ]; then
+    if [ ! -f /etc/sing-box/certs/cert.pem ] || [ ! -f /etc/sing-box/certs/key.pem ]; then
+        log_info "Generating missing certificates..."
         openssl req -x509 -newkey rsa:2048 -keyout /etc/sing-box/certs/key.pem \
             -out /etc/sing-box/certs/cert.pem -days 3650 -nodes \
             -subj "/CN=hysteria.local" 2>/dev/null || log_warning "Failed to generate certificates"
-        chmod 600 /etc/sing-box/certs/key.pem
+        chmod 644 /etc/sing-box/certs/key.pem
         chmod 644 /etc/sing-box/certs/cert.pem
         log_success "TLS certificates generated"
     else
