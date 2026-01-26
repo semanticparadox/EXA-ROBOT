@@ -196,9 +196,11 @@ impl OrchestrationService {
                         InboundType::Vless(vless) => {
                             for sub in &active_subs {
                                 if let Some(uuid) = &sub.vless_uuid {
+                                    let email = format!("user_{}", sub.user_id);
+                                    info!("🔑 Injecting VLESS user: {} (UUID: {})", email, uuid);
                                     vless.clients.push(VlessClient {
                                         id: uuid.clone(),
-                                        email: format!("user_{}", sub.user_id),
+                                        email: email,
                                         flow: "xtls-rprx-vision".to_string(), // Default flow
                                     });
                                 }
@@ -207,8 +209,10 @@ impl OrchestrationService {
                         InboundType::Hysteria2(hy2) => {
                              for sub in &active_subs {
                                 if let Some(uuid) = &sub.vless_uuid {
+                                    let name = format!("user_{}", sub.user_id);
+                                    info!("🔑 Injecting HYSTERIA user: {} (Pass: {})", name, uuid);
                                     hy2.users.push(Hysteria2User {
-                                        name: format!("user_{}", sub.user_id),
+                                        name: name,
                                         password: uuid.clone(),
                                     });
                                 }
