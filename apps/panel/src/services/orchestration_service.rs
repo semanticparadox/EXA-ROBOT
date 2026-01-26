@@ -118,7 +118,7 @@ impl OrchestrationService {
              up_mbps: 100,
              down_mbps: 100,
              obfs: None, // Disabled by default for better compatibility (matches Blitz)
-             masquerade: Some("/opt/exarobot/apps/panel/assets/masquerade".to_string()),
+             masquerade: Some("file:///opt/exarobot/apps/panel/assets/masquerade".to_string()),
         };
 
         let hy2_json = serde_json::to_string(&InboundType::Hysteria2(hy2_settings_struct))?;
