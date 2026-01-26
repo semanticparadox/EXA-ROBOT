@@ -385,6 +385,20 @@ EOF
         systemctl disable sing-box
     fi
     
+    # Generate self-signed certificates for Hysteria2
+    log_info "Generating TLS certificates for Hysteria2..."
+    mkdir -p /etc/sing-box/certs
+    if [ ! -f /etc/sing-box/certs/cert.pem ]; then
+        openssl req -x509 -newkey rsa:2048 -keyout /etc/sing-box/certs/key.pem \
+            -out /etc/sing-box/certs/cert.pem -days 3650 -nodes \
+            -subj "/CN=hysteria.local" 2>/dev/null || log_warning "Failed to generate certificates"
+        chmod 600 /etc/sing-box/certs/key.pem
+        chmod 644 /etc/sing-box/certs/cert.pem
+        log_success "TLS certificates generated"
+    else
+        log_info "TLS certificates already exist"
+    fi
+    
     # Service
     # Note: We override sing-box service dependency
     mkdir -p /etc/systemd/system/sing-box.service.d

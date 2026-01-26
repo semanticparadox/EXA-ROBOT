@@ -80,8 +80,8 @@ impl ConfigGenerator {
                     let mut tls_config = Hysteria2TlsConfig {
                         enabled: true,
                         server_name: "example.com".to_string(), // Default or from stream
-                        key_path: None,
-                        certificate_path: None,
+                        key_path: Some("/etc/sing-box/certs/key.pem".to_string()),
+                        certificate_path: Some("/etc/sing-box/certs/cert.pem".to_string()),
                     };
 
                     if let Some(tls) = stream_settings.tls_settings {
