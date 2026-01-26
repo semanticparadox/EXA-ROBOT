@@ -492,13 +492,10 @@ pub async fn install_node(
         format!("pending-{}", &token[0..8])
     };
 
-    let res = sqlx::query("INSERT INTO nodes (name, ip, ssh_user, ssh_port, vpn_port, ssh_password, status, join_token, auto_configure) VALUES (?, ?, ?, ?, ?, ?, 'installing', ?, ?) RETURNING id")
+    let res = sqlx::query("INSERT INTO nodes (name, ip, vpn_port, status, join_token, auto_configure) VALUES (?, ?, ?, 'installing', ?, ?) RETURNING id")
         .bind(&form.name)
         .bind(&ip)
-        .bind(&form.username)
-        .bind(form.port)
         .bind(form.vpn_port)
-        .bind(&form.password)
         .bind(&token)
         .bind(auto_configure)
         .fetch_one(&state.pool)
@@ -584,22 +581,10 @@ pub async fn update_node(
     // Let's assume for simplicity we update everything. If password field is empty, it might clear it.
     // Better logic: if password is NOT empty, update it.
     
-    let query = if !form.password.is_empty() {
-         sqlx::query("UPDATE nodes SET name = ?, ip = ?, ssh_user = ?, ssh_port = ?, ssh_password = ? WHERE id = ?")
-            .bind(&form.name)
-            .bind(&form.ip)
-            .bind(&form.username)
-            .bind(form.port)
-            .bind(&form.password)
-            .bind(id)
-    } else {
-         sqlx::query("UPDATE nodes SET name = ?, ip = ?, ssh_user = ?, ssh_port = ? WHERE id = ?")
-            .bind(&form.name)
-            .bind(&form.ip)
-            .bind(&form.username)
-            .bind(form.port)
-            .bind(id)
-    };
+    let query = sqlx::query("UPDATE nodes SET name = ?, ip = ? WHERE id = ?")
+        .bind(&form.name)
+        .bind(&form.ip)
+        .bind(id);
 
     match query.execute(&state.pool).await {
         Ok(_) => {

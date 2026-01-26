@@ -5,8 +5,8 @@ use std::sync::Arc;
 use crate::models::store::Subscription;
 use crate::models::node::Node;
 use crate::singbox::{ConfigGenerator};
-use crate::ssh::execute_remote_script;
 use crate::services::store_service::StoreService;
+
 
 pub struct OrchestrationService {
     pool: SqlitePool,
@@ -236,55 +236,6 @@ impl OrchestrationService {
         Ok((node, serde_json::to_value(&config)?))
     }
 
-    /// Syncs configuration for a specific node
-    pub async fn sync_node_config(&self, node_id: i64) -> anyhow::Result<()> {
-        info!("Syncing config for node ID: {}", node_id);
-
-        let (node, config_value) = self.generate_node_config_json(node_id).await?;
-        
-        if node.status != "active" {
-            // return Err(anyhow::anyhow!("Node is not active"));
-        }
-        
-        if !node.is_enabled {
-            info!("Node {} is disabled. Skipping sync.", node_id);
-            return Ok(());
-        }
-
-        let config_json = serde_json::to_string_pretty(&config_value)?;
-        let password = node.ssh_password; 
-        
-        info!("Pushing updated Sing-box configuration to {}...", node.ip);
-        
-        let safe_cmd = if node.ssh_user == "root" {
-             format!("mkdir -p /etc/sing-box && echo '{}' > /etc/sing-box/config.json && systemctl restart sing-box", config_json.replace("'", "'\\''"))
-        } else {
-             format!("sudo mkdir -p /etc/sing-box && echo '{}' | sudo tee /etc/sing-box/config.json > /dev/null && sudo systemctl restart sing-box", config_json.replace("'", "'\\''"))
-        };
-
-        let (tx, mut _rx) = tokio::sync::mpsc::channel(10);
-        execute_remote_script(&node.ip, &node.ssh_user, node.ssh_port, &password, &safe_cmd, tx).await?;
-        
-        Ok(())
-    }
-
-    /// Syncs all active nodes
-    pub async fn sync_all_nodes(&self) -> anyhow::Result<()> {
-        let active_nodes: Vec<Node> = sqlx::query_as("SELECT * FROM nodes WHERE status = 'active'")
-            .fetch_all(&self.pool)
-            .await?;
-
-        info!("Syncing {} active nodes. Store service status: active", active_nodes.len());
-
-        for node in active_nodes {
-            if let Err(e) = self.sync_node_config(node.id).await {
-                error!("Failed to sync node {}: {}", node.ip, e);
-            }
-        }
-
-        Ok(())
-    }
-
     /// Get all nodes (for admin UI)
     pub async fn get_all_nodes(&self) -> anyhow::Result<Vec<Node>> {
         let all_nodes: Vec<Node> = sqlx::query_as("SELECT * FROM nodes ORDER BY created_at DESC")
@@ -294,31 +245,4 @@ impl OrchestrationService {
         Ok(all_nodes)
     }
 
-    /// Fetches traffic usage from a node via sing-box API
-    pub async fn get_node_usage(&self, node_id: i64) -> anyhow::Result<serde_json::Value> {
-        let node: Node = sqlx::query_as("SELECT * FROM nodes WHERE id = ?")
-            .bind(node_id)
-            .fetch_one(&self.pool)
-            .await?;
-
-        let password = node.ssh_password; // Option<String>
-        
-        // Command to fetch stats from sing-box via its local API (default port 9090 if configured)
-        // ... (lines 175-186 omitted/same)
-        
-        let cmd = "curl -s http://127.0.0.1:9090/traffic || echo '{}'";
-        
-        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
-        execute_remote_script(&node.ip, &node.ssh_user, node.ssh_port, &password, cmd, tx).await?;
-        
-        let mut full_output = String::new();
-        while let Some(line) = rx.recv().await {
-            full_output.push_str(&line);
-        }
-
-        match serde_json::from_str(&full_output) {
-            Ok(json) => Ok(json),
-            Err(_) => Ok(serde_json::json!({})),
-        }
-    }
 }

@@ -13,10 +13,7 @@ pub struct Node {
     pub short_id: Option<String>,
     pub domain: Option<String>,
     pub root_password: Option<String>, // Added to match Schema (was missing)
-    pub ssh_user: String,
-    pub ssh_port: i64,
     pub vpn_port: i64,
-    pub ssh_password: Option<String>,
     pub last_seen: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub join_token: Option<String>,
