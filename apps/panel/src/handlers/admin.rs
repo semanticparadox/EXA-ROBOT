@@ -467,7 +467,7 @@ pub async fn install_node(
 ) -> impl IntoResponse {
     let check_ip = form.ip.clone().unwrap_or_default();
     if !check_ip.is_empty() {
-        info!("Adding node: {}@{}:{}", form.username, check_ip, form.port);
+        info!("Adding node: {} @ {}", form.name, check_ip);
     } else {
         info!("Adding pending node: {}", form.name);
     }
