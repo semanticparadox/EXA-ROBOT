@@ -237,8 +237,12 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
     });
 
 
+use axum::routing::get_service;
+use tower_http::services::ServeDir;
+
     // Routes
     let admin_routes = axum::Router::new()
+        .nest_service("/assets", ServeDir::new("apps/panel/assets"))
         .route("/dashboard", axum::routing::get(handlers::admin::get_dashboard))
         .route("/settings", axum::routing::get(handlers::admin::get_settings))
         .route("/settings/save", axum::routing::post(handlers::admin::save_settings))
