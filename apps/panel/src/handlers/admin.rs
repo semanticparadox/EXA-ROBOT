@@ -620,13 +620,26 @@ pub async fn update_node(
 pub async fn sync_node(
     Path(id): Path<i64>,
     State(state): State<AppState>,
-) -> impl IntoResponse {
-    info!("Manual sync triggered for node: {}", id);
+        info!("Manual sync triggered for node: {}", id);
     
     let orch = state.orchestration_service.clone();
     tokio::spawn(async move {
-        if let Err(e) = orch.sync_node_config(id).await {
-            error!("Failed to manually sync node {}: {}", id, e);
+        // Delete existing inbounds to force regeneration with fresh keys
+        if let Err(e) = sqlx::query("DELETE FROM inbounds WHERE node_id = ?")
+            .bind(id)
+            .execute(&orch.pool)
+            .await 
+        {
+            error!("Failed to delete old inbounds: {}", e);
+        } else {
+            info!("Deleted old inbounds for node {}", id);
+        }
+        
+        // Recreate default inbounds with fresh keys
+        if let Err(e) = orch.init_default_inbounds(id).await {
+            error!("Failed to recreate inbounds for node {}: {}", id, e);
+        } else {
+            info!("Successfully regenerated inbounds with fresh keys for node {}", id);
         }
     });
 

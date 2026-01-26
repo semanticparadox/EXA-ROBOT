@@ -446,6 +446,29 @@ EOF
     systemctl daemon-reload
     systemctl enable exarobot-agent
     systemctl restart exarobot-agent
+    
+    # Wait for Agent to start and fetch config
+    log_info "Waiting for Agent to fetch configuration..."
+    sleep 5
+    
+    # Verify config was created
+    if [ -f /etc/sing-box/config.json ]; then
+        log_success "Configuration synchronized"
+        
+        # Restart sing-box with new config
+        systemctl restart sing-box
+        sleep 2
+        
+        # Check if sing-box started successfully
+        if systemctl is-active --quiet sing-box; then
+            log_success "Sing-box started successfully"
+        else
+            log_error "Sing-box failed to start. Check logs: journalctl -u sing-box -n 50"
+        fi
+    else
+        log_warning "Config not found. Agent may need more time to connect to Panel."
+    fi
+    
     log_success "Agent installed."
 }
 

@@ -64,7 +64,18 @@ async fn main() -> anyhow::Result<()> {
         current_hash: load_current_hash(&args.config_path).await,
     };
 
-    // 4. Main Loop
+    // 4. Fetch initial config
+    info!("🔄 Fetching initial configuration from Panel...");
+    match check_and_update_config(&client, &panel_url, &token, &args.config_path, &mut state).await {
+        Ok(_) => {
+            info!("✅ Initial configuration loaded successfully");
+        }
+        Err(e) => {
+            error!("⚠️ Failed to fetch initial config: {}. Will retry in mainloop.", e);
+        }
+    }
+    
+    // 5. Main Loop
     let client = reqwest::Client::new();
     let mut failures = 0;
     
