@@ -62,7 +62,7 @@ All routes below are prefixed with `/{admin_path}` (Default: `/admin`) and requi
 | `GET` | `/plans` | `get_plans` | List service plans |
 | `POST` | `/plans/add` | `add_plan` | Create new plan |
 | `POST` | `/plans/:id` | `update_plan` | Update plan details |
-| `DELETE` | `/plans/:id` | `delete_plan` | Delete plan |
+| `DELETE` | `/plans/:id` | `delete_plan` | Delete plan & **refund active users** |
 | `GET` | `/plans/:id/bindings` | `get_plan_bindings` | Manage plan nodes |
 | `GET` | `/users` | `get_users` | List users |
 | `GET` | `/users/:id` | `get_user_details` | User detail view |

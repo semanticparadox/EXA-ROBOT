@@ -13,6 +13,9 @@ Handles database interactions for users, plans, and subscriptions.
 | `transfer_subscription` | `sub_id`, `from_user_id`, `to_username` | `Result<()>` | Moves a subscription to another user. |
 | `extend_subscription` | `sub_id`, `days` | `Result<()>` | Adds days to an existing subscription. |
 | `redeem_gift_code` | `user_id`, `code` | `Result<Subscription>` | Activates a gift code for a user. |
+| `delete_plan_and_refund` | `plan_id` | `Result<(users, total)>` | Deletes plan and automatically refunds active users. |
+| `get_user_referrals` | `referrer_id` | `Result<Vec<DetailedReferral>>` | Fetches list of referred users with earnings. |
+| `get_user_referral_earnings` | `referrer_id` | `Result<i64>` | Calculates total lifetime referral bonuses. |
 
 ## 💰 Pay Service (`services/pay_service.rs`)
 Manages payment providers and order processing.
