@@ -447,6 +447,8 @@ After=network.target
 Before=sing-box.service
 
 [Service]
+# Force clean config on startup (Agent will fetch new one)
+ExecStartPre=/bin/rm -f /etc/sing-box/config.json
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
