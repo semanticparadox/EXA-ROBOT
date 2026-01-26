@@ -83,6 +83,18 @@ pub async fn add_inbound(
          return (axum::http::StatusCode::BAD_REQUEST, format!("Invalid Stream Settings JSON: {}", e)).into_response();
     }
 
+    // Check if port is already in use
+    let port_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM inbounds WHERE node_id = ? AND listen_port = ?")
+        .bind(node_id)
+        .bind(form.listen_port)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    if port_count > 0 {
+         return (axum::http::StatusCode::BAD_REQUEST, format!("Port {} is already used by another inbound on this node.", form.listen_port)).into_response();
+    }
+
     let res = sqlx::query("INSERT INTO inbounds (node_id, tag, protocol, listen_port, listen_ip, settings, stream_settings) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(node_id)
         .bind(&form.tag)
@@ -367,6 +379,19 @@ pub async fn update_inbound(
     if serde_json::from_str::<serde_json::Value>(&form.settings).is_err() || 
        serde_json::from_str::<serde_json::Value>(&form.stream_settings).is_err() {
         return (axum::http::StatusCode::BAD_REQUEST, "Invalid JSON").into_response();
+    }
+
+    // Check if port is already in use (excluding self)
+    let port_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM inbounds WHERE node_id = ? AND listen_port = ? AND id != ?")
+        .bind(node_id)
+        .bind(form.listen_port)
+        .bind(inbound_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    if port_count > 0 {
+         return (axum::http::StatusCode::BAD_REQUEST, format!("Port {} is already used by another inbound on this node.", form.listen_port)).into_response();
     }
 
     let res = sqlx::query("UPDATE inbounds SET tag = ?, protocol = ?, listen_port = ?, listen_ip = ?, settings = ?, stream_settings = ? WHERE id = ? AND node_id = ?")
