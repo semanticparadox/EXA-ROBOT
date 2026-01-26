@@ -137,8 +137,7 @@ impl ConfigGenerator {
             },
             inbounds: generated_inbounds,
             outbounds: vec![
-                Outbound::Direct { tag: "direct".to_string() },
-                Outbound::Block { tag: "block".to_string() }
+                Outbound::Direct { tag: "direct".to_string() }
             ],
             route: None, // No routing rules needed - traffic goes direct by default via first outbound
             // Enable Clash API for device monitoring and limit enforcement

@@ -404,16 +404,24 @@ EOF
     systemctl stop sing-box &> /dev/null || true
     systemctl disable sing-box &> /dev/null || true
     
-    # Generate self-signed certificates for Hysteria2 (Check always)
+    # Generate self-signed certificates for Hysteria2 (Force check)
     log_info "Verifying TLS certificates for Hysteria2..."
-    mkdir -p /etc/sing-box/certs
+    
+    # Ensure directory exists with absolute certainty
+    if [ ! -d "/etc/sing-box/certs" ]; then
+        mkdir -p /etc/sing-box/certs
+        log_info "Created /etc/sing-box/certs directory"
+    fi
+    
     if [ ! -f /etc/sing-box/certs/cert.pem ] || [ ! -f /etc/sing-box/certs/key.pem ]; then
         log_info "Generating missing certificates..."
         openssl req -x509 -newkey rsa:2048 -keyout /etc/sing-box/certs/key.pem \
             -out /etc/sing-box/certs/cert.pem -days 3650 -nodes \
             -subj "/CN=hysteria.local" 2>/dev/null || log_warning "Failed to generate certificates"
-        chmod 644 /etc/sing-box/certs/key.pem
+        
+        # Security permissions
         chmod 644 /etc/sing-box/certs/cert.pem
+        chmod 600 /etc/sing-box/certs/key.pem
         log_success "TLS certificates generated"
     else
         log_info "TLS certificates already exist"
