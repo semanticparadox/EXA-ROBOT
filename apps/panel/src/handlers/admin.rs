@@ -605,6 +605,7 @@ pub async fn update_node(
 pub async fn sync_node(
     Path(id): Path<i64>,
     State(state): State<AppState>,
+) -> impl IntoResponse {
         info!("Manual sync triggered for node: {}", id);
     
     let orch = state.orchestration_service.clone();
