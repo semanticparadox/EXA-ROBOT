@@ -515,7 +515,7 @@ pub async fn callback_handler(
                     if let Some(u) = user_db {
                         match state.store_service.purchase_plan(u.id, duration_id).await {
                             Ok(_sub) => {
-                                let _ = bot.answer_callback_query(q.id).text("✅ Purchase successful!").await;
+                                // Agents pull config automatically - no sync needed
                                 if let Some(msg) = q.message {
                                     let _ = bot.send_message(msg.chat().id, "✅ *Purchase Successful\\!*\n\nYour subscription is now *Pending*.\nGo to *My Services* to activate it when you are ready.").parse_mode(ParseMode::MarkdownV2).await;
                                 }
