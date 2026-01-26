@@ -140,8 +140,6 @@ check_conflicts() {
             set -e
         fi
 
-
-
         if [[ "$OVERWRITE" == "y" || "$OVERWRITE" == "Y" ]]; then
             # BACKUP DATABASE
             if [ -f "$INSTALL_DIR/exarobot.db" ]; then
@@ -155,7 +153,6 @@ check_conflicts() {
             log_info "Stopping and removing existing services..."
             
             # Stop Services
-            # Stop Services
             systemctl stop exarobot &> /dev/null || true
             systemctl disable exarobot &> /dev/null || true
             rm -f /etc/systemd/system/exarobot.service
@@ -168,9 +165,7 @@ check_conflicts() {
             systemctl disable exarobot-agent &> /dev/null || true
             rm -f /etc/systemd/system/exarobot-agent.service
             
-            # Remove Sing-box (if requested by user "remove sing-box also")
-            # We assume if we are overwriting agent, we might want to clean sing-box too?
-            # User specifically asked for this.
+            # Remove Sing-box
             if command -v sing-box &> /dev/null; then
                  log_info "Removing Sing-box..."
                  systemctl stop sing-box || true
@@ -185,13 +180,12 @@ check_conflicts() {
             if command -v fuser &> /dev/null; then
                  fuser -k ${TARGET_PORT}/tcp || true
             fi
-            # Use lsof as backup if fuser missed it or not present
+            # Use lsof as backup
             if command -v lsof &> /dev/null; then
                  lsof -t -i:${TARGET_PORT} | xargs -r kill -9 || true
             fi
             
             # Remove Files - SAFELY
-            # Move out of the directory first to avoid 'getcwd' errors if running from there
             cd /tmp || exit 1
             
             log_info "Removing installation directory..."
