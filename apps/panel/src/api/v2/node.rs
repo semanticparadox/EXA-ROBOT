@@ -12,7 +12,8 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct IpApiResponse {
-    countryCode: String,
+    #[serde(rename = "countryCode")]
+    country_code: String,
 }
 
 /// Handle agent heartbeat
@@ -112,11 +113,11 @@ pub async fn heartbeat(
                 Ok(resp) => {
                      if let Ok(json) = resp.json::<IpApiResponse>().await {
                          let _ = sqlx::query("UPDATE nodes SET country_code = ? WHERE id = ?")
-                             .bind(&json.countryCode)
+                             .bind(&json.country_code)
                              .bind(node_id)
                              .execute(&pool)
                              .await;
-                         info!("🗺️ [GeoIP] Detected country {} for node {}", json.countryCode, node_id);
+                         info!("🗺️ [GeoIP] Detected country {} for node {}", json.country_code, node_id);
                      }
                 },
                 Err(e) => error!("GeoIP failed: {}", e)
