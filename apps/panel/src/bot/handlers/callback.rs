@@ -204,11 +204,7 @@ pub async fn callback_handler(
                 if let Some(u) = user_db {
                     match state.store_service.activate_subscription(sub_id, u.id).await {
                         Ok(sub) => {
-                            let _ = bot.answer_callback_query(q.id).text("✅ Activated!").await;
-                            let orch = state.orchestration_service.clone();
-                            tokio::spawn(async move {
                                 // Agents pull config automatically - no sync needed
-                            });
                             if let Some(msg) = q.message {
                                 let _ = bot.send_message(msg.chat().id, format!("🚀 *Subscription Activated!*\nExpires: `{}`", sub.expires_at.format("%Y-%m-%d"))).parse_mode(ParseMode::MarkdownV2).await;
                             }
@@ -519,11 +515,7 @@ pub async fn callback_handler(
                     if let Some(u) = user_db {
                         match state.store_service.purchase_plan(u.id, duration_id).await {
                             Ok(_sub) => {
-                                let _ = bot.answer_callback_query(q.id).text("✅ Purchase successful!").await;
-                                let orch = state.orchestration_service.clone();
-                                tokio::spawn(async move {
-                                    // Agents pull config automatically - no sync needed
-                                });
+                                // Agents pull config automatically - no sync needed
                                 if let Some(msg) = q.message {
                                     let _ = bot.send_message(msg.chat().id, "✅ *Purchase Successful\\!*\n\nYour subscription is now *Pending*.\nGo to *My Services* to activate it when you are ready.").parse_mode(ParseMode::MarkdownV2).await;
                                 }
@@ -547,11 +539,7 @@ pub async fn callback_handler(
                         match state.store_service.extend_subscription(u.id, duration_id).await {
                             Ok(sub) => {
                                 let _ = bot.answer_callback_query(q.id).text("✅ Extension successful!").await;
-                                // Sync logic if needed, usually extension doesn't change UUIDs but good to sync
-                                let orch = state.orchestration_service.clone();
-                                tokio::spawn(async move {
-                                    // Agents pull config automatically - no sync needed
-                                });
+                                // Agents pull config automatically - no sync needed
 
                                 if let Some(msg) = q.message {
                                     let _ = bot.send_message(msg.chat().id, format!("✅ *Subscription Extended!*\nNew Expiry: `{}`", sub.expires_at.format("%Y-%m-%d"))).parse_mode(ParseMode::MarkdownV2).await;

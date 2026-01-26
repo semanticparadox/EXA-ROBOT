@@ -269,11 +269,7 @@ use tower_http::services::ServeDir;
         .route("/nodes/:id/raw-install", axum::routing::get(handlers::admin::get_node_raw_install_script))
         .route("/nodes/:id/config/preview", axum::routing::get(handlers::admin_network::preview_node_config))
         .route("/nodes/:id/sync", axum::routing::post(handlers::admin::sync_node))
-        // Node Control (Phase 4)
-        .route("/nodes/:id/test", axum::routing::post(handlers::node_control::test_node_connection))
-        .route("/nodes/:id/restart", axum::routing::post(handlers::node_control::restart_node_service))
-        .route("/nodes/:id/logs", axum::routing::get(handlers::node_control::pull_node_logs))
-        .route("/nodes/:id/health", axum::routing::get(handlers::node_control::get_node_health))
+        // SSH-based Node Control removed - use Agent API endpoints instead
         .route("/nodes/:id/delete", axum::routing::delete(handlers::admin::delete_node))
         .route("/nodes/:id/toggle", axum::routing::post(handlers::admin::toggle_node_enable))
         .route("/nodes/:id/inbounds", axum::routing::get(handlers::admin_network::get_node_inbounds).post(handlers::admin_network::add_inbound))
