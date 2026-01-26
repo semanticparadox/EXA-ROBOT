@@ -2,7 +2,8 @@ use sqlx::SqlitePool;
 use tracing::{info, error};
 use std::sync::Arc;
 
-use crate::models::store::Subscription;
+
+// Removed unused Subscription import
 use crate::models::node::Node;
 use crate::singbox::{ConfigGenerator};
 use crate::services::store_service::StoreService;
@@ -186,7 +187,6 @@ impl OrchestrationService {
         #[derive(sqlx::FromRow)]
         struct SubWithUser {
             vless_uuid: Option<String>,
-            user_id: i64,
             tg_id: i64,
             username: Option<String>,
         }
@@ -195,7 +195,7 @@ impl OrchestrationService {
         
         let query = format!(
             r#"
-            SELECT s.vless_uuid, s.user_id, u.tg_id, u.username
+            SELECT s.vless_uuid, u.tg_id, u.username
             FROM subscriptions s
             JOIN users u ON s.user_id = u.id
             WHERE s.status = 'active' AND s.plan_id IN ({})
