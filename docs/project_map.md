@@ -44,6 +44,12 @@ Telegram Bot Logic.
 Database Structs (SQLx).
 - **`(Various files)`**: Type definitions mapping to SQLite tables.
 
+#### `apps/panel/src/singbox/`
+Sing-box Configuration Generation Module.
+- **`mod.rs`**: Module exports.
+- **`config.rs`**: Rust structs representing the Sing-box JSON schema (Inbounds, Outbounds, Route, Experimental).
+- **`generator.rs`**: Logic to convert Database Inbounds -> Sing-box Config. Handles bandwidth limits, auth formatting, and JSON generation.
+
 #### `apps/panel/migrations/`
 - **`001_complete_schema.sql`**: The single source of truth for the database schema.
 

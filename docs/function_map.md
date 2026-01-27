@@ -54,3 +54,10 @@ Event-driven handlers for Telegram updates.
 |----------|------------|---------|-------------|
 | `heartbeat` | `node_id`, `stats` | `Result<()>` | Updates node last_seen and resource usage. |
 | `get_node_config` | `node_token` | `Result<Config>` | Returns the full Sing-box JSON for the agent. |
+
+## ⚙️ Config Generator (`singbox/generator.rs`)
+Responsible for translating database models into Sing-box/Xray JSON configuration.
+
+| Function | Parameters | Returns | Description |
+|----------|------------|---------|-------------|
+| `generate_config` | `node_ip`, `inbounds` | `SingBoxConfig` | Builds the complete Sing-box JSON structure, handling protocol specifics (VLESS/Hysteria2) and fixups (auth, bandwidth). |
