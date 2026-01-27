@@ -98,3 +98,73 @@ Run via `./exarobot <COMMAND>` or `cargo run -- <COMMAND>`
 | `install` | - | - | Install as systemd service |
 | `admin` | `reset-password` | `<username> <new_pass>` | Reset admin credentials |
 | `admin` | `info` | - | Show connection info |
+
+## 📄 Inbound Configuration Schema
+
+When adding or updating inbounds via API, the `settings` and `stream_settings` fields expect specific JSON structures.
+
+### Hysteria 2 (Sing-box 1.11+)
+
+**Settings JSON:**
+```json
+{
+  "protocol": "hysteria2",
+  "up_mbps": 100,          // Upload limit (Mbps), Integer
+  "down_mbps": 100,        // Download limit (Mbps), Integer
+  "obfs": {                // Optional Obfuscation
+    "type": "salamander",
+    "password": "your-obfs-password"
+  },
+  "masquerade": "/opt/exarobot/apps/panel/assets/masquerade", // Or URL
+  "users": []              // Managed automatically by orchestration
+}
+```
+
+**Stream Settings JSON:**
+```json
+{
+  "network": "udp",
+  "security": "tls",
+  "tls_settings": {
+    "server_name": "drive.google.com",
+    "certificates": [
+      {
+         "certificate_path": "/etc/sing-box/certs/cert.pem",
+         "key_path": "/etc/sing-box/certs/key.pem"
+      }
+    ],
+    "alpn": ["h3"]
+  }
+}
+```
+
+### VLESS Reality
+
+**Settings JSON:**
+```json
+{
+  "protocol": "vless",
+  "clients": [],           // Managed automatically
+  "decryption": "none",
+  "fallbacks": []
+}
+```
+
+**Stream Settings JSON:**
+```json
+{
+  "network": "tcp",
+  "security": "reality",
+  "reality_settings": {
+    "show": false,
+    "dest": "drive.google.com:443",
+    "server_names": [
+      "drive.google.com",
+      "www.google.com"
+    ],
+    "private_key": "YOUR_PRIVATE_KEY",
+    "short_ids": ["f6c54d03071d32a3"]
+  },
+  "tls_settings": null
+}
+```
