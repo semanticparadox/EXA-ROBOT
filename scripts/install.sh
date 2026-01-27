@@ -430,7 +430,7 @@ EOF
     fi
 
     # 1. Detect SNI from Panel Config (if possible)
-    TARGET_SNI="hysteria.local"
+    TARGET_SNI="drive.google.com"
     if [ -n "$PANEL_URL" ] && [ -n "$NODE_TOKEN" ]; then
         log_info "Fetching config to detect SNI..."
         # Try to fetch config

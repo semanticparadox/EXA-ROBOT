@@ -81,7 +81,7 @@ impl ConfigGenerator {
                 InboundType::Hysteria2(hy2) => {
                     let mut tls_config = Hysteria2TlsConfig {
                         enabled: true,
-                        server_name: "example.com".to_string(), // Default or from stream
+                        server_name: "drive.google.com".to_string(), // Default or from stream
                         key_path: Some("/etc/sing-box/certs/key.pem".to_string()),
                         certificate_path: Some("/etc/sing-box/certs/cert.pem".to_string()),
                         alpn: Some(vec!["h3".to_string()]),
@@ -121,7 +121,7 @@ impl ConfigGenerator {
                         listen_port: inbound.listen_port as u16,
                         users,
                         ignore_client_bandwidth: Some(false),
-                        masquerade: hy2.masquerade.clone(),
+                        masquerade: hy2.masquerade.clone().map(|s| s.replace("file://", "")),
                         tls: tls_config,
                     }));
                 },
