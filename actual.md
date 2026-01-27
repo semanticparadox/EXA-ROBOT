@@ -150,16 +150,21 @@ install_singbox() {
 ---
 
 ### 2. UI для Управления SNI
+(Planned)
 
-**Сейчас:**  
-SNI для Hysteria2 задаётся **вручную** в JSON поле `stream_settings`
+---
 
-**Улучшение:**  
-Добавить в UI панели отдельное поле **"Server Name (SNI)"** для Hysteria2 инбаундов
+## 🛠️ Последние Исправления (GitHub Push Ready)
 
-**Файлы:**
-- Backend: [apps/panel/src/handlers/admin.rs](file:///Users/smtcprdx/Documents/exarobot/apps/panel/src/handlers/admin.rs)
-- Template: `apps/panel/templates/inbound_edit_modal.html` (или аналог)
+### 1. Hysteria2 Password Fix ✅
+- **Проблема:** Пароли генерировались с дефисами (UUID).
+- **Исправление:** [apps/panel/src/singbox/generator.rs](file:///Users/smtcprdx/Documents/exarobot/apps/panel/src/singbox/generator.rs) — удаление дефисов (`.replace("-", "")`).
+- **Статус:** Закоммичено. Требуется `git pull` и пересборка панели.
+
+### 2. Умная Генерация Сертификатов в install.sh ✅
+- **Проблема:** Сертификаты создавались с SNI `hysteria.local`.
+- **Исправление:** [scripts/install.sh](file:///Users/smtcprdx/Documents/exarobot/scripts/install.sh) — авто-определение SNI из конфига панели.
+- **Статус:** Закоммичено. Требуется `git pull` и запуск на агенте.
 
 ---
 

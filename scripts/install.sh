@@ -421,27 +421,58 @@ EOF
     systemctl stop sing-box &> /dev/null || true
     systemctl disable sing-box &> /dev/null || true
     
-    # Generate self-signed certificates for Hysteria2 (Force check)
+    # Generate self-signed certificates for Hysteria2 (Smart Check)
     log_info "Verifying TLS certificates for Hysteria2..."
     
-    # Ensure directory exists with absolute certainty
+    # Ensure directory exists
     if [ ! -d "/etc/sing-box/certs" ]; then
         mkdir -p /etc/sing-box/certs
-        log_info "Created /etc/sing-box/certs directory"
     fi
-    
-    if [ ! -f /etc/sing-box/certs/cert.pem ] || [ ! -f /etc/sing-box/certs/key.pem ]; then
-        log_info "Generating missing certificates..."
+
+    # 1. Detect SNI from Panel Config (if possible)
+    TARGET_SNI="hysteria.local"
+    if [ -n "$PANEL_URL" ] && [ -n "$NODE_TOKEN" ]; then
+        log_info "Fetching config to detect SNI..."
+        # Try to fetch config
+        CONFIG_JSON=$(curl -s -m 5 "$PANEL_URL/api/v2/node/config" -H "Authorization: Bearer $NODE_TOKEN" || echo "")
+        
+        # Simple grep extraction to avoid jq dependency
+        FETCHED_SNI=$(echo "$CONFIG_JSON" | grep -o '"server_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+        
+        if [ -n "$FETCHED_SNI" ] && [ "$FETCHED_SNI" != "null" ]; then
+             TARGET_SNI="$FETCHED_SNI"
+             log_info "Detected SNI from config: $TARGET_SNI"
+        else
+             log_warn "Could not detect SNI from config (using default: $TARGET_SNI)"
+        fi
+    fi
+
+    # 2. Check existing certificate CN
+    CURRENT_CN=""
+    if [ -f /etc/sing-box/certs/cert.pem ]; then
+         # Extract CN from subject
+         CURRENT_CN=$(openssl x509 -in /etc/sing-box/certs/cert.pem -noout -subject 2>/dev/null | sed -n 's/^.*CN *= *\([^,]*\).*$/\1/p')
+    fi
+
+    # 3. Generate or Regenerate if needed
+    if [ ! -f /etc/sing-box/certs/cert.pem ] || [ ! -f /etc/sing-box/certs/key.pem ] || [ "$CURRENT_CN" != "$TARGET_SNI" ]; then
+        
+        if [ "$CURRENT_CN" != "$TARGET_SNI" ] && [ -n "$CURRENT_CN" ]; then
+            log_warn "SNI Mismatch (Current: '$CURRENT_CN', Target: '$TARGET_SNI'). Regenerating..."
+        else
+            log_info "Generating certificates for SNI: $TARGET_SNI"
+        fi
+
         openssl req -x509 -newkey rsa:2048 -keyout /etc/sing-box/certs/key.pem \
             -out /etc/sing-box/certs/cert.pem -days 3650 -nodes \
-            -subj "/CN=hysteria.local" 2>/dev/null || log_warning "Failed to generate certificates"
+            -subj "/CN=$TARGET_SNI" 2>/dev/null || log_warning "Failed to generate certificates"
         
         # Security permissions
         chmod 644 /etc/sing-box/certs/cert.pem
         chmod 600 /etc/sing-box/certs/key.pem
-        log_success "TLS certificates generated"
+        log_success "TLS certificates generated/updated"
     else
-        log_info "TLS certificates already exist"
+        log_info "TLS certificates match SNI: $TARGET_SNI"
     fi
     
     # Service

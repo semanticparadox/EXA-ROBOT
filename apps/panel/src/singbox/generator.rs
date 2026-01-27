@@ -31,7 +31,8 @@ impl ConfigGenerator {
             let stream_settings: DbStreamSettings = match serde_json::from_str(&inbound.stream_settings) {
                 Ok(s) => s,
                 Err(e) => {
-                    error!("Failed to parse stream settings for inbound {}: {}", inbound.tag, e);
+                    error!("StreamSettings parse failed for inbound tag='{}', json='{}': {}", 
+                        inbound.tag, inbound.stream_settings, e);
                     continue;
                 }
             };
@@ -111,7 +112,7 @@ impl ConfigGenerator {
 
                     let users = hy2.users.iter().map(|u| Hysteria2User {
                         name: u.name.clone(),
-                        password: u.password.clone(),
+                        password: u.password.replace("-", ""),
                     }).collect();
 
                     generated_inbounds.push(Inbound::Hysteria2(Hysteria2Inbound {
