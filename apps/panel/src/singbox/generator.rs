@@ -121,7 +121,13 @@ impl ConfigGenerator {
                         listen_port: inbound.listen_port as u16,
                         users,
                         ignore_client_bandwidth: Some(false),
-                        masquerade: hy2.masquerade.clone().map(|s| s.replace("file://", "")),
+                        masquerade: hy2.masquerade.clone().map(|s| {
+                            if !s.contains("://") && s.starts_with('/') {
+                                format!("file://{}", s)
+                            } else {
+                                s
+                            }
+                        }),
                         tls: tls_config,
                     }));
                 },
