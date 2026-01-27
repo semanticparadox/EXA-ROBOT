@@ -235,6 +235,18 @@ async fn save_config(path: &str, content: &serde_json::Value) -> anyhow::Result<
     Ok(())
 }
 
+fn restart_singbox() -> anyhow::Result<()> {
+    info!("🔄 Restarting sing-box service...");
+    
+    let output = std::process::Command::new("systemctl")
+        .args(&["restart", "sing-box"])
+        .output()?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("systemctl restart failed: {}", stderr);
+    }
+    
     info!("✅ Service restarted");
     Ok(())
 }
