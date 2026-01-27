@@ -9,6 +9,7 @@ Cargo.lock
 *.sql.backup
 log.md
 actual.md
+context7.json
 # Environment
 .env
 !.env.*.example
