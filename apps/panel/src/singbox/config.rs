@@ -87,6 +87,11 @@ pub struct Hysteria2Inbound {
     pub listen_port: u16,
     pub users: Vec<Hysteria2User>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub up_mbps: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub down_mbps: Option<i32>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ignore_client_bandwidth: Option<bool>,
     
     #[serde(skip_serializing_if = "Option::is_none")]
