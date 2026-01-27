@@ -116,8 +116,8 @@ pub struct TlsSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Certificate {
-    pub certificate_file: String,
-    pub key_file: String,
+    pub certificate_path: String,
+    pub key_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

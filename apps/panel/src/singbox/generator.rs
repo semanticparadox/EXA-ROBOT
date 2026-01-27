@@ -91,11 +91,11 @@ impl ConfigGenerator {
                          if let Some(certs) = tls.certificates {
                              if let Some(first) = certs.first() {
                                  // Only overwrite if not empty
-                                 if !first.key_file.is_empty() {
-                                     tls_config.key_path = Some(first.key_file.clone());
+                                 if !first.key_path.is_empty() {
+                                     tls_config.key_path = Some(first.key_path.clone());
                                  }
-                                 if !first.certificate_file.is_empty() {
-                                     tls_config.certificate_path = Some(first.certificate_file.clone());
+                                 if !first.certificate_path.is_empty() {
+                                     tls_config.certificate_path = Some(first.certificate_path.clone());
                                  }
                              }
                          }
