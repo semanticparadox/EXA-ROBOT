@@ -105,7 +105,9 @@ pub struct Hysteria2User {
 pub struct Hysteria2TlsConfig {
     pub enabled: bool,
     pub server_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alpn: Option<Vec<String>>,
@@ -115,7 +117,6 @@ pub struct Hysteria2TlsConfig {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Outbound {
     Direct { tag: String },
-    Dns { tag: String },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

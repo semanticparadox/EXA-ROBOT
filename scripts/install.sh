@@ -94,6 +94,21 @@ install_singbox() {
     else
         log_success "sing-box already installed"
     fi
+    
+    # Ensure we know where it is
+    SINGBOX_BIN=$(command -v sing-box || echo "/usr/bin/sing-box")
+    if [ ! -f "$SINGBOX_BIN" ]; then
+        # Try common checks
+        if [ -f "/usr/local/bin/sing-box" ]; then
+             SINGBOX_BIN="/usr/local/bin/sing-box"
+        elif [ -f "/usr/bin/sing-box" ]; then
+             SINGBOX_BIN="/usr/bin/sing-box"
+        else
+             log_warn "Could not locate sing-box binary. Assuming /usr/bin/sing-box"
+             SINGBOX_BIN="/usr/bin/sing-box"
+        fi
+    fi
+    log_info "Sing-box binary found at: $SINGBOX_BIN"
 }
 
 setup_firewall() {
@@ -439,7 +454,7 @@ Wants=exarobot-agent.service
 
 [Service]
 ExecStart=
-ExecStart=/usr/bin/sing-box run -c /etc/sing-box/config.json
+ExecStart=$SINGBOX_BIN run -c /etc/sing-box/config.json
 EOF
 
     cat > /etc/systemd/system/exarobot-agent.service <<EOF
