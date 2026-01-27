@@ -112,7 +112,10 @@ impl ConfigGenerator {
 
                     let users = hy2.users.iter().map(|u| Hysteria2User {
                         name: u.name.clone(),
-                        password: u.password.replace("-", ""),
+                        // CRITICAL FIX: Sing-box Hysteria2 treats the entire auth payload as 'password'.
+                        // Official clients send 'user:password'.
+                        // So we must set the server-side password to match 'user:password'.
+                        password: format!("{}:{}", u.name, u.password.replace("-", "")),
                     }).collect();
 
                     generated_inbounds.push(Inbound::Hysteria2(Hysteria2Inbound {
@@ -123,10 +126,11 @@ impl ConfigGenerator {
                         // Configured bandwidth hints (integers in Mbps)
                         up_mbps: Some(hy2.up_mbps),
                         down_mbps: Some(hy2.down_mbps),
-                        ignore_client_bandwidth: Some(false), // Enforce limits if set? Or respect client? Usually respect client for H2.
-                        // Actually 'ignore_client_bandwidth: false' means "do NOT ignore", so trust client?
-                        // If true, it ignores client's bandwidth claim and uses server's BBR.
-                        // Let's keep it false (default behavior).
+                        
+                        // Conflict resolution: Docs say 'ignore_client_bandwidth' conflicts with up/down limits.
+                        // So we only set it if limits are NOT set (or implicitly handling it).
+                        // Since we are setting limits, we set this to None to let Serde skip it.
+                        ignore_client_bandwidth: None, 
                         
                         obfs: hy2.obfs.map(|o| Hysteria2Obfs {
                             ttype: o.ttype,
@@ -169,5 +173,14 @@ impl ConfigGenerator {
                 },
             }),
         }
+    }
+
+    pub fn generate_node_config_json(
+        _node_id: i64, 
+        _pool: &sqlx::SqlitePool
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<(crate::models::node::Node, serde_json::Value)>> + Send + '_>> {
+        Box::pin(async move {
+            Err(anyhow::anyhow!("Use OrchestrationService for node config generation"))
+        })
     }
 }
