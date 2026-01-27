@@ -120,9 +120,6 @@ impl ConfigGenerator {
                         listen: inbound.listen_ip,
                         listen_port: inbound.listen_port as u16,
                         users,
-                        // Configured bandwidth hints (optional but recommended)
-                        up: Some(format!("{} Mbps", hy2.up_mbps)),
-                        down: Some(format!("{} Mbps", hy2.down_mbps)),
                         ignore_client_bandwidth: Some(false), // Enforce limits if set? Or respect client? Usually respect client for H2.
                         // Actually 'ignore_client_bandwidth: false' means "do NOT ignore", so trust client?
                         // If true, it ignores client's bandwidth claim and uses server's BBR.
