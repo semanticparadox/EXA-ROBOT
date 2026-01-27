@@ -1111,12 +1111,21 @@ impl StoreService {
                     "hysteria2" => {
                         // hysteria2://user:password@ip:port?sni=...&insecure=1#remark
                         let mut params = Vec::new();
-                         if stream.security == "tls" {
+                        if stream.security == "tls" {
+                            let mut use_insecure = true;
                             if let Some(tls) = stream.tls_settings {
                                 params.push(format!("sni={}", tls.server_name));
+                                // Heuristic: If SNI is not the default generic one, assume user has a valid cert and wants verification.
+                                // "drive.google.com" is our default for self-signed.
+                                if tls.server_name != "drive.google.com" && tls.server_name != "www.yahoo.com" {
+                                    use_insecure = false;
+                                }
                             }
+                            params.push(format!("insecure={}", if use_insecure { "1" } else { "0" }));
+                        } else {
+                            // No TLS? Hysteria2 usually implies TLS/QUIC.
+                            params.push("insecure=1".to_string());
                         }
-                        params.push("insecure=1".to_string()); // Self-signed usually
 
                         // Check for OBFS in protocol settings
                         use crate::models::network::InboundType;
