@@ -1,33 +1,43 @@
-<div id="bot-status-container" class="grid">
-    <div style="display: flex; flex-direction: column; justify-content: space-between;">
+<div id="bot-status-container" class="space-y-4">
+    <div class="flex items-center justify-between">
         <div>
-            <h4 style="margin-bottom: 0.5rem;">Bot Control</h4>
-            <span class="badge {% if bot_status == " running" %}badge-success{% else %}badge-error{% endif %}"
-                style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">
+            <span
+                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border {% if bot_status == "
+                running" %}bg-emerald-500/10 text-emerald-400 border-emerald-500/20{% else %}bg-red-500/10 text-red-400
+                border-red-500/20{% endif %}">
+                <span class="w-1.5 h-1.5 rounded-full mr-1.5 {% if bot_status == " running" %}bg-emerald-500{% else
+                    %}bg-red-500{% endif %}"></span>
                 {{ bot_status|capitalize }}
             </span>
-            <p style="margin-top: 1rem; color: var(--muted-color); font-size: 0.9rem;">
-                Manage lifecycle and monitor real-time activity metrics.
-            </p>
         </div>
-        <button class="{% if bot_status == " running" %}secondary{% else %}primary{% endif %}"
-            hx-post="{{ admin_path }}/settings/bot/toggle" hx-target="#bot-status-container" hx-swap="outerHTML"
-            style="width: fit-content; margin-bottom: 0;">
-            {% if bot_status == "running" %}Stop Bot Service{% else %}Start Bot Service{% endif %}
+        <button
+            class="px-4 py-2 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500 {% if bot_status == "
+            running" %}bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white border border-white/10{% else
+            %}bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20{% endif %}"
+            hx-post="{{ admin_path }}/settings/bot/toggle" hx-target="#bot-status-container" hx-swap="outerHTML">
+            {% if bot_status == "running" %}Stop Service{% else %}Start Service{% endif %}
         </button>
     </div>
-    <div>
-        <div
-            style="background: #000; border: 1px solid #333; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-            <div
-                style="background: #222; padding: 4px 12px; font-size: 0.7rem; border-bottom: 1px solid #333; color: #888; display: flex; justify-content: space-between;">
-                <span>bot@exa:~$ logs --tail</span>
-                <span style="color: #444;">● ● ●</span>
+
+    <!-- Terminal Window -->
+    <div class="rounded-xl overflow-hidden bg-[#0a0a0a] border border-white/10 shadow-2xl font-mono text-xs">
+        <!-- Terminal Header -->
+        <div class="bg-[#1a1a1a] px-4 py-2 flex items-center justify-between border-b border-white/5">
+            <div class="flex space-x-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-amber-500/80"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></div>
             </div>
-            <div id="bot-console"
-                style="background: #000; color: #00ff41; padding: 0.75rem; height: 160px; overflow-y: scroll; font-family: 'Fira Code', 'Courier New', monospace; font-size: 0.75rem; scroll-behavior: smooth; text-shadow: 0 0 2px rgba(0,255,65,0.4);">
-                <div id="bot-console-content">Initializing session...</div>
-            </div>
+            <div class="text-slate-500 font-medium text-[10px] tracking-wide">bot@exa-robot:~</div>
+            <div class="w-10"></div> <!-- Spacer for balance -->
+        </div>
+
+        <!-- Terminal Body -->
+        <div id="bot-console" class="h-[200px] overflow-y-auto p-4 space-y-1 scroll-smooth">
+            <div class="text-slate-500 mb-2">Last login: {{ now()|date(format="%a %b %d %H:%M:%S") }} on ttys000</div>
+            <div id="bot-console-content" class="text-emerald-400/90 leading-relaxed whitespace-pre-wrap">Initializing
+                session...</div>
+            <div class="animate-pulse inline-block w-2 h-4 bg-slate-500 align-middle ml-1"></div>
         </div>
     </div>
 </div>

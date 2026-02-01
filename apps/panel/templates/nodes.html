@@ -1,201 +1,290 @@
 {% extends "base.html" %}
 
 {% block title %}Nodes Management{% endblock %}
+{% block header_title %}VPN Nodes{% endblock %}
 
 {% block content %}
-<section>
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2>VPN Nodes</h2>
-        <button onclick="document.getElementById('add-node-modal').showModal()">Add New Node</button>
+<section class="space-y-6">
+    <!-- Header Action -->
+    <div class="flex justify-end">
+        <button onclick="document.getElementById('add-node-modal').showModal()"
+            class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-lg shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>Add New Node</span>
+        </button>
     </div>
 
-    <table role="grid">
-        <thead>
-            <tr>
-                <th><small>Name / IP</small></th>
-                <th><small>Status</small></th>
-                <th><small>Last Seen</small></th>
-                <th style="text-align: right;"><small>Actions</small></th>
-            </tr>
-        </thead>
-        <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 10s" hx-select="#nodes-table-body"
-            hx-target="#nodes-table-body" hx-swap="outerHTML" id="nodes-table-body">
-            {% for node in nodes %}
-            <tr style="opacity: {% if node.is_enabled %}1{% else %}0.6{% endif %};">
-                <td>
-                    <div style="font-weight: bold; display: flex; align-items: center; gap: 0.5rem;">
-                        {% if let Some(code) = node.country_code %}
-                        <img src="https://flagcdn.com/24x18/{{ code|lower }}.png" title="{{ code }}" width="24"
-                            height="18" style="border-radius: 2px;">
-                        {% endif %}
-                        {{ node.name }}
-                    </div>
-                    <small style="color: #666;">
-                        {% if node.status == "new" || node.status == "installing" %}
-                        <a href="#"
-                            onclick="showConnectModal('{{ node.join_token.clone().unwrap_or_default() }}', '{{ node.name }}')">
-                            🔌 Connect Server
-                        </a>
-                        {% else %}
-                        {{ node.ip }}
-                        {% endif %}
-                    </small>
-                </td>
-                <td>
-                    {% if node.status == "active" %}
-                    <span style="color: #4CAF50;">● Online</span>
-                    {% else if node.status == "offline" %}
-                    <span style="color: #F44336;">● Offline</span>
-                    {% else %}
-                    <span style="color: #FF9800;">● {{ node.status|capitalize }}</span>
-                    {% endif %}
+    <!-- Nodes Table -->
+    <div class="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden shadow-xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="text-xs font-semibold text-slate-500 uppercase border-b border-white/5 bg-slate-900/50">
+                        <th class="px-6 py-4">Name / IP</th>
+                        <th class="px-6 py-4">Status</th>
+                        <th class="px-6 py-4">Last Seen</th>
+                        <th class="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 10s" hx-select="#nodes-table-body"
+                    hx-target="#nodes-table-body" hx-swap="outerHTML" id="nodes-table-body"
+                    class="divide-y divide-white/5">
+                    {% for node in nodes %}
+                    <tr
+                        class="hover:bg-white/5 transition-colors group {% if !node.is_enabled %}opacity-60 grayscale{% endif %}">
+                        <td class="px-6 py-4">
+                            <div class="flex flex-col">
+                                <div class="flex items-center gap-2 font-medium text-white mb-0.5">
+                                    {% if let Some(code) = node.country_code %}
+                                    <img src="https://flagcdn.com/24x18/{{ code|lower }}.png" title="{{ code }}"
+                                        width="20" height="15" class="rounded-[2px] shadow-sm">
+                                    {% endif %}
+                                    {{ node.name }}
+                                </div>
+                                <div class="text-xs text-slate-500 font-mono">
+                                    {% if node.status == "new" || node.status == "installing" %}
+                                    <a href="#" class="text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                                        onclick="showConnectModal('{{ node.join_token.clone().unwrap_or_default() }}', '{{ node.name }}')">
+                                        <i data-lucide="plug" class="w-3 h-3"></i> Connect Server
+                                    </a>
+                                    {% else %}
+                                    {{ node.ip }}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if node.status == "active" %}
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online
+                            </span>
+                            {% else if node.status == "offline" %}
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Offline
+                            </span>
+                            {% else %}
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> {{
+                                node.status|capitalize }}
+                            </span>
+                            {% endif %}
 
-                    {% if !node.is_enabled %}
-                    <small style="color: #F44336; display: block;">(Disabled)</small>
-                    {% endif %}
-                </td>
-                <td>
-                    {% if let Some(ls) = node.last_seen %}
-                    <small class="time-ago" data-time="{{ ls }}">{{ ls }}</small>
-                    {% else %}
-                    <small style="color: #666;">Never</small>
-                    {% endif %}
-                </td>
-                <td style="text-align: right;">
-                    <div class="grid"
-                        style="display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center;">
-                        <!-- Quick Actions -->
-                        {% if node.status == "active" %}
-                        <button class="outline" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;"
-                            hx-post="{{ admin_path }}/nodes/{{ node.id }}/toggle" hx-swap="none">
-                            {% if node.is_enabled %}Disable{% else %}Enable{% endif %}
-                        </button>
-                        {% endif %}
-
-                        <!-- More Actions Dropdown -->
-                        <details class="dropdown" style="margin-bottom: 0;">
-                            <summary role="button" class="outline secondary"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Manage ▾</summary>
-                            <ul dir="rtl">
+                            {% if !node.is_enabled %}
+                            <span class="ml-2 text-xs text-red-400 font-medium">(Disabled)</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if let Some(ls) = node.last_seen %}
+                            <span class="text-sm text-slate-400 time-ago" data-time="{{ ls }}">{{ ls }}</span>
+                            {% else %}
+                            <span class="text-sm text-slate-600">Never</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <div class="flex items-center justify-end gap-2">
+                                <!-- Quick Actions -->
                                 {% if node.status == "active" %}
-                                <li><a href="{{ admin_path }}/nodes/{{ node.id }}/inbounds">Inbounds</a></li>
-                                <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/test" hx-swap="none"
-                                        hx-on::after-request="alert(event.detail.xhr.responseText)">Test Connection</a>
-                                </li>
-                                <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/sync" hx-swap="none">Sync
-                                        Config</a></li>
-                                <li><a href="#" hx-get="{{ admin_path }}/nodes/{{ node.id }}/logs"
-                                        hx-target="#logs-modal-content"
-                                        hx-on::after-request="document.getElementById('logs-modal').showModal()">View
-                                        Logs</a></li>
-                                <li><a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/restart"
-                                        hx-Confirm="Restart service?">Restart Service</a></li>
+                                <button
+                                    class="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                                    hx-post="{{ admin_path }}/nodes/{{ node.id }}/toggle" hx-swap="none"
+                                    title="{% if node.is_enabled %}Disable{% else %}Enable{% endif %}">
+                                    <i data-lucide="power"
+                                        class="w-4 h-4 {% if node.is_enabled %}text-emerald-500{% else %}text-red-500{% endif %}"></i>
+                                </button>
                                 {% endif %}
-                                <li><a href="javascript:void(0)" hx-get="{{ admin_path }}/nodes/{{ node.id }}/edit"
-                                        hx-target="#edit-node-modal-content" hx-swap="innerHTML"
-                                        hx-on::after-request="document.getElementById('edit-node-modal').showModal()">Edit
-                                        Node</a></li>
-                                <li><a href="#" onclick="showConfigPreview({{ node.id }})">Preview Config</a></li>
-                                <li><a href="#" style="color: #F44336;"
-                                        hx-delete="{{ admin_path }}/nodes/{{ node.id }}/delete"
-                                        hx-confirm="Delete node? This cannot be undone." hx-target="closest tr"
-                                        hx-swap="outerHTML">Delete Node</a></li>
-                            </ul>
-                        </details>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-            <script>
-                // Simple TimeAgo
-                document.querySelectorAll('.time-ago').forEach(el => {
-                    const date = new Date(el.getAttribute('data-time'));
-                    const now = new Date();
-                    const diff = Math.floor((now - date) / 1000);
 
-                    if (isNaN(diff)) return;
+                                <!-- Custom Dropdown using Group Focus (simpler than details) -->
+                                <div class="relative group/dropdown">
+                                    <button
+                                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 text-xs font-medium text-slate-300 transition-colors">
+                                        Manage <i data-lucide="chevron-down" class="w-3 h-3"></i>
+                                    </button>
 
-                    let text = "";
-                    if (diff < 60) text = "Just now";
-                    else if (diff < 3600) text = Math.floor(diff / 60) + "m ago";
-                    else if (diff < 86400) text = Math.floor(diff / 3600) + "h ago";
-                    else text = Math.floor(diff / 86400) + "d ago";
+                                    <div
+                                        class="absolute right-0 mt-2 w-48 bg-slate-900 border border-white/10 rounded-xl shadow-2xl opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible transition-all z-20 overflow-hidden transform origin-top-right">
+                                        <div class="py-1">
+                                            {% if node.status == "active" %}
+                                            <a href="{{ admin_path }}/nodes/{{ node.id }}/inbounds"
+                                                class="block px-4 py-2 text-sm text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors">
+                                                Inbounds
+                                            </a>
+                                            <a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/test"
+                                                hx-swap="none"
+                                                hx-on::after-request="showToast(event.detail.xhr.responseText)"
+                                                class="block px-4 py-2 text-sm text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors">
+                                                Test Connection
+                                            </a>
+                                            <a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/sync"
+                                                hx-swap="none"
+                                                class="block px-4 py-2 text-sm text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors">
+                                                Sync Config
+                                            </a>
+                                            <a href="#" hx-get="{{ admin_path }}/nodes/{{ node.id }}/logs"
+                                                hx-target="#logs-modal-content"
+                                                hx-on::after-request="document.getElementById('logs-modal').showModal()"
+                                                class="block px-4 py-2 text-sm text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors">
+                                                View Logs
+                                            </a>
+                                            <a href="#" hx-post="{{ admin_path }}/nodes/{{ node.id }}/restart"
+                                                hx-confirm="Restart service?"
+                                                class="block px-4 py-2 text-sm text-amber-500 hover:bg-amber-500/10 transition-colors">
+                                                Restart Service
+                                            </a>
+                                            {% endif %}
 
-                    el.innerText = text;
-                });
-            </script>
-        </tbody>
-    </table>
+                                            <div class="h-px bg-white/5 my-1"></div>
+
+                                            <a href="javascript:void(0)"
+                                                hx-get="{{ admin_path }}/nodes/{{ node.id }}/edit"
+                                                hx-target="#edit-node-modal-content" hx-swap="innerHTML"
+                                                hx-on::after-request="document.getElementById('edit-node-modal').showModal()"
+                                                class="block px-4 py-2 text-sm text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors">
+                                                Edit Node
+                                            </a>
+                                            <a href="#" onclick="showConfigPreview({{ node.id }})"
+                                                class="block px-4 py-2 text-sm text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors">
+                                                Preview Config
+                                            </a>
+                                            <a href="#" hx-delete="{{ admin_path }}/nodes/{{ node.id }}/delete"
+                                                hx-confirm="Delete node? This cannot be undone." hx-target="closest tr"
+                                                hx-swap="outerHTML"
+                                                class="block px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">
+                                                Delete Node
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <script>
+                        // Simple TimeAgo
+                        document.querySelectorAll('.time-ago').forEach(el => {
+                            const date = new Date(el.getAttribute('data-time'));
+                            const now = new Date();
+                            const diff = Math.floor((now - date) / 1000);
+
+                            if (isNaN(diff)) return;
+
+                            let text = "";
+                            if (diff < 60) text = "Just now";
+                            else if (diff < 3600) text = Math.floor(diff / 60) + "m ago";
+                            else if (diff < 86400) text = Math.floor(diff / 3600) + "h ago";
+                            else text = Math.floor(diff / 86400) + "d ago";
+
+                            el.innerText = text;
+                        });
+                    </script>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </section>
 
 <!-- Add Node Modal -->
-<dialog id="add-node-modal">
-    <article>
-        <header>
-            <a href="#close" aria-label="Close" class="close"
-                onclick="document.getElementById('add-node-modal').close()"></a>
-            Add New VPN Node
+<dialog id="add-node-modal"
+    class="backdrop:bg-slate-950/80 bg-transparent p-0 open:animate-fade-in backdrop:backdrop-blur-sm">
+    <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4"
+        onclick="event.stopPropagation()">
+        <header class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-bold text-white">Add New VPN Node</h3>
+            <button onclick="document.getElementById('add-node-modal').close()"
+                class="text-slate-400 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
         </header>
 
-        <div style="margin-bottom: 1rem;">
-            <ul class="grid" style="list-style: none; padding: 0;">
-                <li><button class="outline" id="btn-mode-smart" onclick="setMode('smart')">Smart Setup
-                        (Recommended)</button></li>
-                <li><button class="outline" id="btn-mode-manual" onclick="setMode('manual')">Manual / Advanced</button>
-                </li>
-            </ul>
+        <div class="mb-6">
+            <div class="flex p-1 bg-slate-950 rounded-xl border border-white/10">
+                <button id="btn-mode-smart" onclick="setMode('smart')"
+                    class="flex-1 py-2 text-sm font-medium rounded-lg transition-all bg-indigo-600 text-white shadow-lg">
+                    Smart Setup
+                </button>
+                <button id="btn-mode-manual" onclick="setMode('manual')"
+                    class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 hover:text-white transition-all">
+                    Manual
+                </button>
+            </div>
         </div>
 
-        <form hx-post="{{ admin_path }}/nodes/install" hx-swap="none">
-            <label for="name">Friendly Name</label>
-            <input type="text" id="name" name="name" placeholder="Germany-1" required>
-
-            <div id="advanced-fields" style="display: none;">
-                <div class="grid">
-                    <div>
-                        <label for="ip">IP Address</label>
-                        <input type="text" id="ip" name="ip" placeholder="1.2.3.4">
-                    </div>
-                    <div>
-                        <label for="port">SSH Port</label>
-                        <input type="number" id="port" name="port" placeholder="22" value="22" required>
-                    </div>
-                </div>
-                <div class="grid">
-                    <div>
-                        <label for="vpn_port">VPN Service Port</label>
-                        <input type="number" id="vpn_port" name="vpn_port" placeholder="443" value="443" required>
-                    </div>
-                    <div><!-- spacer --></div>
-                </div>
-
-                <label for="username">SSH Username</label>
-                <input type="text" id="username" name="username" placeholder="root" value="root" required>
-
-                <label for="password">Root/User Password (Optional if using Key)</label>
-                <input type="password" id="password" name="password">
+        <form hx-post="{{ admin_path }}/nodes/install" hx-swap="none" class="space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Friendly
+                    Name</label>
+                <input type="text" id="name" name="name" placeholder="Germany-1" required
+                    class="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
             </div>
 
-            <!-- Smart Mode Hidden Inputs defaults -->
+            <div id="advanced-fields" style="display: none;" class="space-y-4 animate-fade-in">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">IP
+                            Address</label>
+                        <input type="text" id="ip" name="ip" placeholder="1.2.3.4"
+                            class="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">SSH
+                            Port</label>
+                        <input type="number" id="port" name="port" placeholder="22" value="22" required
+                            class="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">VPN
+                            Port</label>
+                        <input type="number" id="vpn_port" name="vpn_port" placeholder="443" value="443" required
+                            class="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">SSH
+                        Username</label>
+                    <input type="text" id="username" name="username" placeholder="root" value="root" required
+                        class="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Password
+                        (Optional)</label>
+                    <input type="password" id="password" name="password" placeholder="Root password if no key"
+                        class="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                </div>
+            </div>
+
+            <!-- Smart Mode Hidden defaults -->
             <input type="hidden" id="auto_configure" name="auto_configure" value="true">
 
-            <div id="smart-info" style="margin-bottom: 1rem; padding: 1rem; background: #222; border-radius: 8px;">
-                <small>
-                    1. Enter a Name.<br>
-                    2. Click "Generate Command".<br>
-                    3. Run the command on your empty VPS.
-                </small>
+            <div id="smart-info" class="p-4 bg-slate-950 border border-white/5 rounded-xl">
+                <div class="flex gap-3">
+                    <i data-lucide="info" class="w-5 h-5 text-indigo-400 flex-shrink-0"></i>
+                    <div class="text-sm text-slate-400 space-y-1">
+                        <p>1. Enter a Name.</p>
+                        <p>2. Click "Generate Command".</p>
+                        <p>3. Run the command on your empty VPS.</p>
+                    </div>
+                </div>
             </div>
 
-            <footer>
-                <button type="button" class="secondary"
+            <div class="pt-4 flex gap-3">
+                <button type="button"
+                    class="flex-1 py-3.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium"
                     onclick="document.getElementById('add-node-modal').close()">Cancel</button>
                 <button type="submit" id="submit-btn"
-                    onclick="setTimeout(()=>document.getElementById('add-node-modal').close(), 500)">Generate
-                    Command</button>
-            </footer>
+                    class="flex-[2] bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]"
+                    onclick="setTimeout(()=>document.getElementById('add-node-modal').close(), 500)">
+                    Generate Command
+                </button>
+            </div>
         </form>
-    </article>
+    </div>
 </dialog>
 
 <script>
@@ -211,16 +300,22 @@
         if (mode === 'manual') {
             advanced.style.display = 'block';
             smart.style.display = 'none';
-            btnSmart.classList.add('outline');
-            btnManual.classList.remove('outline');
+            btnSmart.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg');
+            btnSmart.classList.add('text-slate-400', 'hover:text-white');
+            btnManual.classList.add('bg-indigo-600', 'text-white', 'shadow-lg');
+            btnManual.classList.remove('text-slate-400', 'hover:text-white');
+
             submitBtn.innerText = "Add Node";
             ipInput.required = true;
             autoConfig.value = "false";
         } else {
             advanced.style.display = 'none';
             smart.style.display = 'block';
-            btnSmart.classList.remove('outline');
-            btnManual.classList.add('outline');
+            btnSmart.classList.add('bg-indigo-600', 'text-white', 'shadow-lg');
+            btnSmart.classList.remove('text-slate-400', 'hover:text-white');
+            btnManual.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg');
+            btnManual.classList.add('text-slate-400', 'hover:text-white');
+
             submitBtn.innerText = "Generate Command";
             ipInput.required = false;
             ipInput.value = "";
@@ -231,35 +326,55 @@
 </script>
 
 <!-- Edit Node Modal -->
-<dialog id="edit-node-modal">
-    <article id="edit-node-modal-content">
+<dialog id="edit-node-modal"
+    class="backdrop:bg-slate-950/80 bg-transparent p-0 open:animate-fade-in backdrop:backdrop-blur-sm">
+    <div id="edit-node-modal-content"
+        class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4"
+        onclick="event.stopPropagation()">
         <!-- Content loaded via HTMX -->
-        <p aria-busy="true">Loading...</p>
-    </article>
+        <div class="flex items-center justify-center p-12 text-slate-500">
+            <i data-lucide="loader-2" class="w-6 h-6 animate-spin mr-3"></i> Loading...
+        </div>
+    </div>
 </dialog>
 
 <!-- Manual Install Modal -->
-<dialog id="manual-install-modal">
-    <article id="manual-install-modal-content" style="width: 800px; max-width: 90%;">
+<dialog id="manual-install-modal"
+    class="backdrop:bg-slate-950/80 bg-transparent p-0 open:animate-fade-in backdrop:backdrop-blur-sm">
+    <div id="manual-install-modal-content"
+        class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl p-6 m-4"
+        onclick="event.stopPropagation()">
         <!-- Content loaded via HTMX -->
-        <p aria-busy="true">Loading script...</p>
-    </article>
+        <div class="flex items-center justify-center p-12 text-slate-500">
+            <i data-lucide="loader-2" class="w-6 h-6 animate-spin mr-3"></i> Loading script...
+        </div>
+    </div>
 </dialog>
 
 <!-- Config Preview Modal -->
-<dialog id="preview-modal">
-    <article style="width: 800px; max-width: 90%;">
-        <header>
-            <a href="#close" aria-label="Close" class="close"
-                onclick="document.getElementById('preview-modal').close()"></a>
-            Generated Config Preview
+<dialog id="preview-modal"
+    class="backdrop:bg-slate-950/80 bg-transparent p-0 open:animate-fade-in backdrop:backdrop-blur-sm">
+    <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl p-6 m-4 flex flex-col max-h-[90vh]"
+        onclick="event.stopPropagation()">
+        <header class="flex justify-between items-center mb-6 flex-shrink-0">
+            <h3 class="text-xl font-bold text-white">Generated Config Preview</h3>
+            <button onclick="document.getElementById('preview-modal').close()"
+                class="text-slate-400 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
         </header>
-        <pre id="preview-content"
-            style="background: #1a1a1a; padding: 1rem; color: #00ff00; border-radius: 4px; overflow: auto; max-height: 500px;"></pre>
-        <footer>
-            <button class="outline" onclick="document.getElementById('preview-modal').close()">Close</button>
+
+        <div class="flex-1 overflow-auto bg-[#0a0a0a] rounded-xl border border-white/5 p-4">
+            <pre id="preview-content"
+                class="text-emerald-400 font-mono text-xs leading-relaxed whitespace-pre-wrap font-fira"></pre>
+        </div>
+
+        <footer class="mt-6 flex justify-end flex-shrink-0">
+            <button
+                class="px-6 py-2.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium"
+                onclick="document.getElementById('preview-modal').close()">Close</button>
         </footer>
-    </article>
+    </div>
 </dialog>
 
 <script>
@@ -273,7 +388,14 @@
             const resp = await fetch(`{{ admin_path }}/nodes/${nodeId}/config/preview`);
             if (resp.ok) {
                 const json = await resp.text();
-                content.textContent = json;
+                // Beautify if JSON
+                try {
+                    const obj = JSON.parse(json);
+                    content.textContent = JSON.stringify(obj, null, 2);
+                } catch (e) {
+                    content.textContent = json;
+                }
+
             } else {
                 content.textContent = "Failed to load preview: " + resp.statusText;
             }
@@ -284,52 +406,80 @@
 </script>
 
 <!-- Logs Modal -->
-<dialog id="logs-modal">
-    <article style="width: 800px; max-width: 90vw;">
-        <header>
-            <a href="#close" aria-label="Close" class="close"
-                onclick="document.getElementById('logs-modal').close()"></a>
-            <h3>🗒️ Node Logs</h3>
+<dialog id="logs-modal"
+    class="backdrop:bg-slate-950/80 bg-transparent p-0 open:animate-fade-in backdrop:backdrop-blur-sm">
+    <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-5xl p-6 m-4 flex flex-col max-h-[90vh]"
+        onclick="event.stopPropagation()">
+        <header class="flex justify-between items-center mb-6 flex-shrink-0">
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                <i data-lucide="file-text" class="w-5 h-5 text-indigo-400"></i> Node Logs
+            </h3>
+            <button onclick="document.getElementById('logs-modal').close()"
+                class="text-slate-400 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
         </header>
+
         <div id="logs-modal-content"
-            style="max-height: 500px; overflow-y: auto; background: #f5f5f5; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;">
+            class="flex-1 overflow-auto bg-[#0a0a0a] rounded-xl border border-white/5 p-4 font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
             Loading logs...
         </div>
-        <footer>
-            <button onclick="document.getElementById('logs-modal').close()">Close</button>
+
+        <footer class="mt-6 flex justify-end flex-shrink-0">
+            <button
+                class="px-6 py-2.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium"
+                onclick="document.getElementById('logs-modal').close()">Close</button>
         </footer>
-    </article>
+    </div>
 </dialog>
 
 <!-- Connect Node Modal -->
-<dialog id="connect-node-modal">
-    <article style="width: 800px; max-width: 90%;">
-        <header>
-            <a href="#close" aria-label="Close" class="close"
-                onclick="document.getElementById('connect-node-modal').close()"></a>
-            🔌 Connect Node
+<dialog id="connect-node-modal"
+    class="backdrop:bg-slate-950/80 bg-transparent p-0 open:animate-fade-in backdrop:backdrop-blur-sm">
+    <div class="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-3xl p-6 m-4"
+        onclick="event.stopPropagation()">
+        <header class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                <i data-lucide="plug" class="w-5 h-5 text-indigo-400"></i> Connect Node
+            </h3>
+            <button onclick="document.getElementById('connect-node-modal').close()"
+                class="text-slate-400 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
         </header>
 
-        <p>Run the following command on your <strong><span id="connect-node-name"></span></strong> server:</p>
+        <p class="text-slate-300 mb-4">Run the following command on your <strong><span id="connect-node-name"
+                    class="text-white font-bold"></span></strong> server:</p>
 
-        <pre><code id="connect-command" style="display: block; background: #222; padding: 1rem; border-radius: 6px; color: #a5d6ff; white-space: pre-wrap; word-break: break-all;">Loading...</code></pre>
+        <div class="bg-[#0a0a0a] rounded-xl border border-white/10 p-4 relative group">
+            <code id="connect-command" class="block font-mono text-sm text-indigo-300 break-all pr-12">Loading...</code>
+            <button onclick="copyConnectCommand()" id="btn-copy-connect"
+                class="absolute top-2 right-2 p-2 bg-white/10 hover:bg-white/20 rounded-lg text-slate-300 transition-colors"
+                title="Copy">
+                <i data-lucide="copy" class="w-4 h-4"></i>
+            </button>
+        </div>
 
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-            <button onclick="copyConnectCommand()" id="btn-copy-connect">📋 Copy Command</button>
-            <button class="secondary outline"
+        <div class="flex justify-end mt-6">
+            <button
+                class="px-6 py-2.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium"
                 onclick="document.getElementById('connect-node-modal').close()">Close</button>
         </div>
 
-        <hr>
-
-        <small style="color: #666;">
-            <strong>Troubleshooting:</strong><br>
-            • Ensure your server is running Debian 12+ or Ubuntu 22.04+<br>
-            • Ensure ports 80/443 are not blocked<br>
-            • If you see "Setup Required" after running this, check the logs on the server: `journalctl -u
-            exarobot-agent -f`
-        </small>
-    </article>
+        <div class="mt-6 pt-6 border-t border-white/5">
+            <div class="flex gap-3">
+                <i data-lucide="alert-circle" class="w-5 h-5 text-amber-500/80 flex-shrink-0"></i>
+                <div class="text-xs text-slate-500 space-y-1">
+                    <p class="font-bold text-slate-400">Troubleshooting:</p>
+                    <p>• Ensure your server is running Debian 12+ or Ubuntu 22.04+</p>
+                    <p>• Ensure ports 80/443 are not blocked</p>
+                    <p>• If you see "Setup Required" after running this, check the logs on the server: <code
+                            class="bg-white/10 px-1 py-0.5 rounded text-slate-400">journalctl -u exarobot-agent -f</code>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
 </dialog>
 
 <script>
@@ -342,7 +492,6 @@
 
         // Construct standard command
         const origin = window.location.origin;
-        // Check if we are dev or prod (simple check)
         const cmd = `curl -sSL https://raw.githubusercontent.com/semanticparadox/EXA-ROBOT/main/scripts/install.sh | sudo bash -s -- --role agent --panel "${origin}" --token "${token}"`;
 
         cmdBlock.innerText = cmd;
@@ -353,10 +502,13 @@
         const cmd = document.getElementById('connect-command').innerText;
         navigator.clipboard.writeText(cmd);
         const btn = document.getElementById('btn-copy-connect');
-        const original = btn.innerText;
-        btn.innerText = "✅ Copied!";
-        setTimeout(() => btn.innerText = original, 2000);
+
+        btn.innerHTML = '<i data-lucide="check" class="w-4 h-4 text-emerald-400"></i>';
+        setTimeout(() => {
+            btn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i>';
+        }, 2000);
+
+        showToast("Command copied to clipboard");
     }
 </script>
-
 {% endblock %}

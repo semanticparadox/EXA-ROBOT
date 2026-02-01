@@ -1,122 +1,202 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
-
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EXA ROBOT - {% block title %}{% endblock %}</title>
-    <!-- CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <link rel="stylesheet" href="{{ admin_path }}/assets/css/modern.css">
-
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#1e293b', 
+                            900: '#0f172a',
+                            950: '#020617',
+                        },
+                        primary: {
+                            500: '#6366f1', // Indigo
+                            600: '#4f46e5',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* Glass Utilities */
+        .glass {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+    </style>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
     <!-- Scripts -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-
-<body>
+<body class="bg-slate-950 text-slate-50 font-sans antialiased selection:bg-indigo-500/30">
     {% if is_auth %}
-    <div class="app-layout">
-        <!-- Vertical Sidebar -->
-        <aside class="sidebar">
-            <div class="brand">
-                <i data-lucide="zap" style="color:#6366f1; fill: #6366f1;"></i>
-                <span>EXA ROBOT</span>
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 fixed inset-y-0 left-0 z-50 bg-slate-900/80 backdrop-blur-xl border-r border-white/5 flex flex-col transition-transform duration-300 lg:translate-x-0" id="sidebar">
+            <!-- Brand -->
+            <div class="h-16 flex items-center px-6 border-b border-white/5 bg-slate-900/50">
+                <div class="flex items-center gap-3">
+                    <div class="relative flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                        <i data-lucide="zap" class="w-5 h-5 text-indigo-500 fill-indigo-500"></i>
+                         <div class="absolute inset-0 bg-indigo-500/20 blur-lg rounded-full opacity-50"></div>
+                    </div>
+                    <span class="font-bold text-lg tracking-tight text-white">EXA ROBOT</span>
+                </div>
             </div>
+            
+            <!-- Nav -->
+            <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+                <div class="px-3 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Main</div>
+                <a href="{{ admin_path }}/dashboard" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="dashboard" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4 mr-3 {% if active_page=="dashboard" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Dashboard
+                </a>
+                <a href="{{ admin_path }}/nodes" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="nodes" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="server" class="w-4 h-4 mr-3 {% if active_page=="nodes" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Nodes
+                </a>
+                <a href="{{ admin_path }}/plans" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="plans" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="box" class="w-4 h-4 mr-3 {% if active_page=="plans" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Plans
+                </a>
+                <a href="{{ admin_path }}/users" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="users" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="users" class="w-4 h-4 mr-3 {% if active_page=="users" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Users
+                </a>
 
-            <ul class="nav-links">
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/dashboard" {% if active_page=="dashboard" %}class="active" {% endif %}>
-                        <i data-lucide="layout-dashboard"></i> Dashboard
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/nodes" {% if active_page=="nodes" %}class="active" {% endif %}>
-                        <i data-lucide="server"></i> Nodes
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/plans" {% if active_page=="plans" %}class="active" {% endif %}>
-                        <i data-lucide="box"></i> Plans
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/users" {% if active_page=="users" %}class="active" {% endif %}>
-                        <i data-lucide="users"></i> Users
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/store/orders" {% if active_page=="orders" %}class="active" {% endif %}>
-                        <i data-lucide="shopping-cart"></i> Store & Orders
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/transactions" {% if active_page=="transactions" %}class="active" {% endif
-                        %}>
-                        <i data-lucide="receipt"></i> Transactions
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ admin_path }}/settings" {% if active_page=="settings" %}class="active" {% endif %}>
-                        <i data-lucide="settings"></i> Settings
-                    </a>
-                </li>
-            </ul>
+                <div class="px-3 mt-6 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Commerce</div>
+                <a href="{{ admin_path }}/store/orders" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="orders" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="shopping-cart" class="w-4 h-4 mr-3 {% if active_page=="orders" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Store & Orders
+                </a>
+                <a href="{{ admin_path }}/transactions" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="transactions" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="receipt" class="w-4 h-4 mr-3 {% if active_page=="transactions" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Transactions
+                </a>
+                
+                <div class="px-3 mt-6 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">System</div>
+                <a href="{{ admin_path }}/settings" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group {% if active_page=="settings" %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.15)] transform scale-[1.02]{% else %}text-slate-400 hover:text-white hover:bg-white/5{% endif %}">
+                    <i data-lucide="settings" class="w-4 h-4 mr-3 {% if active_page=="settings" %}text-indigo-400{% else %}text-slate-500 group-hover:text-white{% endif %} transition-colors"></i>
+                    Settings
+                </a>
+            </nav>
 
-            <div class="nav-footer">
-                <form hx-post="{{ admin_path }}/logout" hx-trigger="click" style="margin:0;">
-                    <a href="#" class="nav-item-link"
-                        style="display:flex; gap:1rem; color: #ff5555; text-decoration:none;">
-                        <i data-lucide="log-out"></i> Logout
-                    </a>
-                </form>
+            <!-- Footer -->
+            <div class="p-4 border-t border-white/5 bg-slate-900/30">
+                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors group" hx-post="{{ admin_path }}/logout" hx-trigger="click">
+                     <div class="h-8 w-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 border border-indigo-500/20 group-hover:border-indigo-500/50 transition-colors">
+                        <i data-lucide="user" class="w-4 h-4"></i>
+                     </div>
+                     <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-white truncate">Admin</p>
+                        <p class="text-xs text-slate-500 truncate group-hover:text-red-400 transition-colors">Logout</p>
+                     </div>
+                     <i data-lucide="log-out" class="w-4 h-4 text-slate-600 group-hover:text-red-400 transition-colors"></i>
+                </div>
             </div>
         </aside>
 
-        <!-- Main Content Area -->
-        <main class="main-content">
-            <!-- Top Header (Breadcrumbs / Wallet) -->
-            <header class="top-bar">
-                <h1 class="page-title">{% block header_title %}Dashboard{% endblock %}</h1>
-                <div class="user-profile">
-                    <!-- Placeholder for user / wallet info if needed -->
+        <!-- Main Content -->
+        <main class="lg:pl-64 flex-1 flex flex-col min-h-screen relative z-0">
+             <!-- Background Gradient Blob -->
+             <div class="absolute top-0 left-0 w-full h-96 bg-indigo-500/5 blur-[100px] pointer-events-none -z-10"></div>
+
+            <!-- Topbar -->
+            <header class="h-16 sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 lg:px-10 transition-all">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-xl font-semibold text-white tracking-tight">{% block header_title %}Dashboard{% endblock %}</h1>
                 </div>
+                <!-- Right Side Actions -->
+                 <div class="flex items-center gap-4">
+                    <!-- Status Indicator -->
+                     <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                        <span class="relative flex h-2 w-2">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span class="text-xs font-medium text-emerald-400">System Online</span>
+                     </div>
+                 </div>
             </header>
 
-            {% block content %}{% endblock %}
+            <!-- Content Area -->
+            <div class="p-6 lg:p-10 max-w-[1600px] mx-auto w-full space-y-8 fade-in">
+                {% block content %}{% endblock %}
+            </div>
         </main>
     </div>
     {% else %}
     <!-- Public Layout (Login) -->
-    <main class="container" style="display:flex; align-items:center; justify-content:center; min-height:100vh;">
+    <main class="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden">
+        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950 pointer-events-none"></div>
         {% block content %}{% endblock %}
     </main>
     {% endif %}
 
-    <div id="toast" class="toast"></div>
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 transition-all duration-300 transform translate-y-10 opacity-0 pointer-events-none"></div>
 
     <script>
-        // Init Icons
+        // Initialize Lucide Icons
         lucide.createIcons();
 
-        document.body.addEventListener('htmx:afterOnLoad', function (evt) {
-            lucide.createIcons(); // Re-init icons after swaps
-            if (evt.detail.xhr.status === 200 && (evt.detail.elt.id === "settings-form" || evt.detail.elt.hasAttribute("hx-post"))) {
+        // Re-init icons after HTMX swaps
+        document.body.addEventListener('htmx:afterOnLoad', function(evt) {
+            lucide.createIcons();
+             if (evt.detail.xhr.status === 200 && (evt.detail.elt.id === "settings-form" || evt.detail.elt.hasAttribute("hx-post"))) {
                 showToast("Action completed successfully!");
             }
         });
 
+        // Toast Function
         function showToast(message) {
-            const toast = document.getElementById('toast');
-            if (toast) {
-                toast.innerText = message;
-                toast.style.display = 'block';
-                setTimeout(() => { toast.style.display = 'none'; }, 3000);
-            }
+             const toast = document.getElementById('toast');
+             if(!toast) return;
+             
+             toast.innerHTML = `
+                <div class="glass bg-slate-900/90 text-white px-5 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-indigo-500/20 backdrop-blur-md">
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                        <i data-lucide="check" class="text-emerald-400 w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-sm text-white">Success</h4>
+                        <p class="text-xs text-slate-400 mt-0.5">${message}</p>
+                    </div>
+                </div>
+             `;
+             
+             toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
+             lucide.createIcons();
+             
+             setTimeout(() => {
+                 toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
+             }, 3000);
         }
     </script>
 </body>
-
 </html>
