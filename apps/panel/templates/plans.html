@@ -26,9 +26,7 @@
                             plan.name }}</h3>
                         <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Flexible Plan</p>
                     </div>
-                    <span
-                        class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border {% if plan.is_active %}bg-emerald-500/10 text-emerald-400 border-emerald-500/20{% else %}bg-slate-500/10 text-slate-400 border-slate-500/20{% endif %}">
-                        {{ plan.is_active|yesno("Active,Inactive") }}
+                    {% if plan.is_active %}Active{% else %}Inactive{% endif %}
                     </span>
                 </div>
 
