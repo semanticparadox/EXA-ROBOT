@@ -317,11 +317,56 @@ build_binaries() {
             if [ -f "$APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql" ]; then
                 sqlite3 "$APP_PANEL_DIR/exarobot.db" < "$APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql" 2>/dev/null || {
                     log_warn "Failed to apply migration, trying minimal schema..."
-                    # Fallback: at least create tables that sqlx! macros reference
+                    # Fallback: create minimal schema with ALL required columns for sqlx! macros
                     sqlite3 "$APP_PANEL_DIR/exarobot.db" <<EOF
-CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, referrer_id INTEGER);
-CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY);
-CREATE TABLE IF NOT EXISTS subscription_ip_tracking (id INTEGER PRIMARY KEY, subscription_id INTEGER, client_ip TEXT, last_seen_at DATETIME);
+-- Core tables with all required columns
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tg_id INTEGER NOT NULL UNIQUE,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    full_name TEXT,
+    language_code TEXT DEFAULT 'en',
+    is_banned BOOLEAN DEFAULT 0,
+    ban_reason TEXT,
+    banned_at DATETIME,
+    referrer_id INTEGER,
+    referral_code TEXT UNIQUE,
+    referred_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    balance INTEGER DEFAULT 0,
+    trial_used INTEGER DEFAULT 0,
+    trial_used_at TIMESTAMP NULL,
+    channel_member_verified INTEGER DEFAULT 0,
+    channel_verified_at TIMESTAMP,
+    trial_source TEXT DEFAULT 'default',
+    terms_accepted_at DATETIME,
+    warning_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    plan_id INTEGER NOT NULL,
+    duration_days INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    total_amount INTEGER NOT NULL,
+    currency TEXT DEFAULT 'USD',
+    status TEXT NOT NULL DEFAULT 'pending',
+    payment_provider TEXT,
+    payment_id TEXT,
+    paid_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS subscription_ip_tracking (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscription_id INTEGER NOT NULL,
+    client_ip TEXT NOT NULL,
+    last_seen_at DATETIME NOT NULL
+);
 EOF
                 }
                 log_success "Database prepared for compilation"
