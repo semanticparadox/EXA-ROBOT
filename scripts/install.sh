@@ -290,19 +290,40 @@ build_binaries() {
         if [ -f "$HOME/.cargo/env" ]; then source "$HOME/.cargo/env"; fi
     fi
     
-    # Init dummy DB for build macros if needed
+    # Init DB for sqlx compile-time verification
     if [[ "$target_role" == "panel" || "$target_role" == "both" ]]; then
-        if [ ! -f "build_db.sqlite" ]; then
-            touch build_db.sqlite
-            export DATABASE_URL="sqlite://build_db.sqlite"
-            if [ -f "apps/panel/migrations/001_complete_schema.sql" ]; then
-                sqlite3 build_db.sqlite < apps/panel/migrations/001_complete_schema.sql
+        local APP_PANEL_DIR="$src_dir/apps/panel"
+        
+        # Create database with consolidated migration for sqlx macros
+        if [ ! -f "$APP_PANEL_DIR/exarobot.db" ]; then
+            log_info "Preparing database for compilation..."
+            export DATABASE_URL="sqlite://$APP_PANEL_DIR/exarobot.db"
+            
+            # Use the new consolidated migration
+            if [ -f "$APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql" ]; then
+                sqlite3 "$APP_PANEL_DIR/exarobot.db" < "$APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql" 2>/dev/null || {
+                    log_warn "Failed to apply migration, trying minimal schema..."
+                    # Fallback: at least create tables that sqlx! macros reference
+                    sqlite3 "$APP_PANEL_DIR/exarobot.db" <<EOF
+CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, referrer_id INTEGER);
+CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS subscription_ip_tracking (id INTEGER PRIMARY KEY, subscription_id INTEGER, client_ip TEXT, last_seen_at DATETIME);
+EOF
+                }
+                log_success "Database prepared for compilation"
+            else
+                log_error "Migration file not found: $APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql"
+                exit 1
             fi
+        else
+            log_info "Database already exists for compilation"
+            export DATABASE_URL="sqlite://$APP_PANEL_DIR/exarobot.db"
         fi
         
         log_info "Compiling Panel (this may take a few minutes)..."
-        # Removed --quiet to show progress
-        cargo build -p exarobot --release
+        cd "$APP_PANEL_DIR"
+        cargo build --release --bin exarobot
+        cd "$src_dir"
     fi
     
     if [[ "$target_role" == "agent" || "$target_role" == "both" ]]; then
@@ -393,12 +414,13 @@ EOF
     if [ ! -f "$DB_FILE" ]; then
         log_info "Initializing database..."
         touch "$DB_FILE"
-        # We rely on binary embedded migrations usually, but for safety lets try apply schema if we have source
-        # If clean install, we might not have migrations folder handy easily unless we use the temp path
-        if [ -f "$TEMP_BUILD_DIR/apps/panel/migrations/001_complete_schema.sql" ]; then
-             sqlite3 "$DB_FILE" < "$TEMP_BUILD_DIR/apps/panel/migrations/001_complete_schema.sql"
-        elif [ -f "$INSTALL_DIR/source/apps/panel/migrations/001_complete_schema.sql" ]; then
-             sqlite3 "$DB_FILE" < "$INSTALL_DIR/source/apps/panel/migrations/001_complete_schema.sql"
+        # Apply consolidated migration
+        if [ -f "$TEMP_BUILD_DIR/apps/panel/migrations/20260201_consolidated_schema.sql" ]; then
+             sqlite3 "$DB_FILE" < "$TEMP_BUILD_DIR/apps/panel/migrations/20260201_consolidated_schema.sql"
+        elif [ -f "$INSTALL_DIR/source/apps/panel/migrations/20260201_consolidated_schema.sql" ]; then
+             sqlite3 "$DB_FILE" < "$INSTALL_DIR/source/apps/panel/migrations/20260201_consolidated_schema.sql"
+        else
+             log_warn "Migration file not found - database will be initialized by application on first run"
         fi
     fi
     
