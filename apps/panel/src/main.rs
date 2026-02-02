@@ -340,7 +340,7 @@ use tower_http::services::ServeDir;
         // Frontend Servers
         .route("/frontends", axum::routing::get(handlers::admin::get_frontends))
         .route("/api/admin/frontends", axum::routing::get(handlers::frontend::list_frontends).post(handlers::frontend::create_frontend))
-        .route("/api/admin/frontends/:region", axum::routing::get(handlers::frontend::get_active_frontends))
+        .route("/api/admin/frontends/by-region/:region", axum::routing::get(handlers::frontend::get_active_frontends))
         .route("/api/admin/frontends/:id", axum::routing::delete(handlers::frontend::delete_frontend))
         .route("/api/admin/frontends/:id/rotate-token", axum::routing::post(handlers::frontend::rotate_token))
         .route("/api/admin/frontends/:domain/heartbeat", axum::routing::post(handlers::frontend::frontend_heartbeat))
