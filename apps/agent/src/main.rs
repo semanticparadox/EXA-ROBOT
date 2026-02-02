@@ -5,6 +5,10 @@ use std::path::Path;
 use exarobot_shared::api::{HeartbeatRequest, HeartbeatResponse};
 use exarobot_shared::config::ConfigResponse;
 
+mod sni_check;
+mod self_update;
+mod decoy_service; // NEW
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -27,6 +31,17 @@ struct Args {
 
 struct AgentState {
     current_hash: Option<String>,
+    // Kill Switch State
+    last_successful_contact: std::time::Instant,
+    kill_switch_enabled: bool,
+    kill_switch_timeout: u64,
+    vpn_stopped_by_kill_switch: bool,
+}
+    // Kill Switch State
+    last_successful_contact: std::time::Instant,
+    kill_switch_enabled: bool,
+    kill_switch_timeout: u66,
+    vpn_stopped_by_kill_switch: bool,
 }
 
 #[tokio::main]
@@ -62,6 +77,10 @@ async fn main() -> anyhow::Result<()> {
     // 3. Load current hash (if config exists)
     let mut state = AgentState {
         current_hash: load_current_hash(&args.config_path).await,
+        last_successful_contact: std::time::Instant::now(),
+        kill_switch_enabled: false,
+        kill_switch_timeout: 300,
+        vpn_stopped_by_kill_switch: false,
     };
 
     // Initialize HTTP Client
@@ -78,7 +97,13 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     
-    // 5. Main Loop
+    // 5. Start Decoy Service (Background)
+    let decoy_svc = decoy_service::DecoyService::new(panel_url.clone(), token.clone());
+    tokio::spawn(async move {
+        decoy_svc.run_loop().await;
+    });
+
+    // 6. Main Loop
     let mut failures = 0;
     
     let start_time = std::time::Instant::now();
@@ -90,6 +115,20 @@ async fn main() -> anyhow::Result<()> {
         match send_heartbeat(&client, &panel_url, &token, uptime, &state).await {
             Ok(resp) => {
                 failures = 0;
+                state.last_successful_contact = std::time::Instant::now(); // Update contact time
+                
+                // If we were stopped by kill switch, revive!
+                if state.vpn_stopped_by_kill_switch {
+                    info!("✅ Connection restored! Reviving VPN service...");
+                    if let Err(e) = restart_singbox() {
+                        error!("Failed to revive VPN: {}", e);
+                    } else {
+                        state.vpn_stopped_by_kill_switch = false;
+                    }
+                }
+                failures = 0;
+                state.last_successful_contact = std::time::Instant::now(); // Update contact time
+
                 info!("💓 Heartbeat OK. Action: {:?}", resp.action);
                 
                 // Check if config update needed
@@ -101,6 +140,33 @@ async fn main() -> anyhow::Result<()> {
                         }
                     },
                     _ => {}
+                }
+                // Check for Agent Update
+                if let Some(target_ver) = resp.latest_version {
+                    // Simple string comparison for now, or use semver crate if added
+                    // Assuming versions are "x.y.z"
+                    let current_version = "0.2.0";
+                    if target_ver != current_version && target_ver != "0.0.0" {
+                         info!("📣 New version available: {} (Current: {})", target_ver, current_version);
+                         
+                         // Fetch update info
+                         let info_url = format!("{}/api/v2/node/update-info", panel_url);
+                         match client.get(&info_url).header("Authorization", format!("Bearer {}", token)).send().await {
+                             Ok(r) => {
+                                 if let Ok(json) = r.json::<serde_json::Value>().await {
+                                     let download_url = json["url"].as_str().unwrap_or("");
+                                     let hash = json["hash"].as_str().unwrap_or("");
+                                     
+                                     if !download_url.is_empty() && !hash.is_empty() {
+                                          if let Err(e) = self_update::perform_update(&client, download_url, hash).await {
+                                               error!("❌ Self-update failed: {}", e);
+                                          }
+                                     }
+                                 }
+                             },
+                             Err(e) => error!("Failed to fetch update info: {}", e)
+                         }
+                    }
                 }
             }
             Err(e) => {
@@ -118,10 +184,134 @@ async fn main() -> anyhow::Result<()> {
             if let Err(e) = check_and_update_config(&client, &panel_url, &token, &args.config_path, &mut state).await {
                 error!("Config check failed: {}", e);
             }
+            
+            // Fetch Global Settings (Kill Switch / Decoy)
+            if let Err(e) = fetch_global_settings(&client, &panel_url, &token, &mut state).await {
+                error!("Failed to fetch settings: {}", e);
+            }
+            
+            // Fetch Global Settings (Kill Switch / Decoy)
+            if let Err(e) = fetch_global_settings(&client, &panel_url, &token, &mut state).await {
+                error!("Failed to fetch settings: {}", e);
+            }
+
+            // SNI Health Check
+            if let Some(current_sni) = sni_check::get_current_sni(&args.config_path).await {
+                if !sni_check::check_reachability(&current_sni).await {
+                    error!("⚠️ SNI {} is unreachable! Triggering rotation...", current_sni);
+                    match rotate_sni(&client, &panel_url, &token, &current_sni).await {
+                        Ok(new_sni) => {
+                            info!("✅ SNI Rotated to {}. Updating config...", new_sni);
+                            // Force immediate config update
+                            if let Err(e) = update_config(&client, &panel_url, &token, &args.config_path, &mut state).await {
+                                error!("Failed to update config after rotation: {}", e);
+                            }
+                        },
+                        Err(e) => error!("❌ Failed to rotate SNI: {}", e),
+                    }
+                }
+            }
+        }
         }
         
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        // KILL SWITCH MONITOR
+        if state.kill_switch_enabled && !state.vpn_stopped_by_kill_switch {
+            if state.last_successful_contact.elapsed().as_secs() > state.kill_switch_timeout {
+                warn!("⚠️ EMERGENCY KILL SWITCH TRIGGERED! Lost connection for {}s (Timeout: {}s)", 
+                    state.last_successful_contact.elapsed().as_secs(), state.kill_switch_timeout);
+                
+                if let Err(e) = stop_singbox() {
+                    error!("❌ FAILED TO STOP VPN SERVICE: {}", e);
+                } else {
+                    state.vpn_stopped_by_kill_switch = true;
+                    warn!("💀 VPN Service has been terminated.");
+                }
+            }
+        }
+        }
+        
+        // KILL SWITCH MONITOR
+        if state.kill_switch_enabled && !state.vpn_stopped_by_kill_switch {
+            if state.last_successful_contact.elapsed().as_secs() > state.kill_switch_timeout {
+                warn!("⚠️ EMERGENCY KILL SWITCH TRIGGERED! Lost connection for {}s (Timeout: {}s)", 
+                    state.last_successful_contact.elapsed().as_secs(), state.kill_switch_timeout);
+                
+                if let Err(e) = stop_singbox() {
+                    error!("❌ FAILED TO STOP VPN SERVICE: {}", e);
+                } else {
+                    state.vpn_stopped_by_kill_switch = true;
+                    warn!("💀 VPN Service has been terminated.");
+                }
+            }
+        }
+        
+        // Long poll (replaces sleep(10))
+        // This effectively makes the heartbeat interval ~30s (timeout) unless update occurs
+        match poll_events(&client, &panel_url, &token).await {
+            Ok(should_update) => {
+                if should_update {
+                    info!("⚡ Instant Update Received!");
+                    if let Err(e) = update_config(&client, &panel_url, &token, &args.config_path, &mut state).await {
+                        error!("Failed to update config: {}", e);
+                    }
+                }
+            },
+            Err(e) => {
+                warn!("Long poll failed or timed out locally: {}. Backing off 5s.", e);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        }
     }
+}
+
+async fn poll_events(
+    client: &reqwest::Client,
+    panel_url: &str,
+    token: &str,
+) -> anyhow::Result<bool> {
+    let url = format!("{}/api/v2/node/updates/poll", panel_url);
+    let resp = client.get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .timeout(Duration::from_secs(40)) // Allows 30s server wait + buffer
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Ok(false);
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    Ok(json.get("update").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+async fn rotate_sni(
+    client: &reqwest::Client,
+    panel_url: &str,
+    token: &str,
+    current_sni: &str,
+) -> anyhow::Result<String> {
+    let url = format!("{}/api/v2/node/rotate-sni", panel_url);
+    
+    let resp = client.post(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "current_sni": current_sni,
+            "reason": "Health check failed (Agent detected unreachable)"
+        }))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("Rotation failed: {}", resp.status());
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    let new_sni = json.get("new_sni")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Invalid response"))?
+        .to_string();
+        
+    Ok(new_sni)
 }
 
 async fn send_heartbeat(
@@ -133,6 +323,9 @@ async fn send_heartbeat(
 ) -> anyhow::Result<HeartbeatResponse> {
     let url = format!("{}/api/v2/node/heartbeat", panel_url);
     
+    // Collect Telemetry
+    let (latency, cpu, ram) = collect_telemetry(client).await;
+
     let payload = HeartbeatRequest {
         version: "0.2.0".to_string(),
         uptime,
@@ -141,6 +334,9 @@ async fn send_heartbeat(
         traffic_up: 0,
         traffic_down: 0,
         certificates: Some(check_certificates(&state.current_hash.as_ref().map(|_| "/etc/sing-box/config.json").unwrap_or("/etc/sing-box/config.json")).await),
+        latency,
+        cpu_usage: cpu,
+        memory_usage: ram,
     };
     
     let resp = client.post(&url)
@@ -319,4 +515,60 @@ async fn check_certificates(config_path: &str) -> Vec<exarobot_shared::api::Cert
     }
     
     statuses
+}
+
+// Helper to stop sing-box
+fn stop_singbox() -> anyhow::Result<()> {
+    info!("🛑 Stopping sing-box service (Kill Switch Triggered)...");
+    let output = std::process::Command::new("systemctl")
+        .args(&["stop", "sing-box"])
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("systemctl stop failed");
+    }
+    Ok(())
+}
+
+async fn fetch_global_settings(
+    client: &reqwest::Client,
+    panel_url: &str,
+    token: &str,
+    state: &mut AgentState,
+) -> anyhow::Result<()> {
+    let url = format!("{}/api/v2/node/settings", panel_url);
+    let resp = client.get(&url).header("Authorization", format!("Bearer {}", token)).send().await?;
+    
+    if resp.status().is_success() {
+        let json: serde_json::Value = resp.json().await?;
+        if let Some(ks) = json.get("kill_switch") {
+            state.kill_switch_enabled = ks.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+            state.kill_switch_timeout = ks.get("timeout").and_then(|v| v.as_u64()).unwrap_or(300);
+        }
+    }
+    Ok(())
+}
+
+async fn collect_telemetry(client: &reqwest::Client) -> (Option<f64>, Option<f64>, Option<f64>) {
+    // 1. Latency Check (HTTP HEAD to Google)
+    let start = std::time::Instant::now();
+    let latency = match client.head("https://www.google.com")
+        .timeout(Duration::from_secs(3))
+        .send()
+        .await 
+    {
+        Ok(_) => Some(start.elapsed().as_millis() as f64),
+        Err(_) => None,
+    };
+
+    // 2. System Stats (CPU/RAM)
+    // sys-info calls are blocking but fast (read /proc)
+    let cpu = sys_info::loadavg().map(|l| l.one).ok();
+    
+    let ram = sys_info::mem_info().map(|m| {
+        if m.total == 0 { return 0.0; }
+        let used = m.total - m.free; // Simple approximation
+        (used as f64 / m.total as f64) * 100.0
+    }).ok();
+
+    (latency, cpu, ram)
 }

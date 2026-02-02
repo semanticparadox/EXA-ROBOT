@@ -1,36 +1,100 @@
-# Build artifacts
+# Rust Build Artifacts
 /target
+**/target/
 Cargo.lock
-/.agent
-# Databases
+**/*.rs.bk
+
+# Databases & Backups
 *.db
 *.db-shm
 *.db-wal
 *.sql.backup
-log.md
-actual.md
-context7.json
-# Environment
+*.sqlite
+*.sqlite3
+
+# Environment Files
 .env
+.env.local
+.env.production
 !.env.*.example
 
 # Logs
 *.log
 logs/
-README.md
-# System files
-.DS_Store
+*.log.*
 
-# SSH keys
+# System Files
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# IDE/Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.fleet/
+
+# Node.js & Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+.next/
+out/
+.cache/
+.parcel-cache/
+.vite/
+
+# Telegram Mini App Build
+apps/mini-app/dist/
+apps/mini-app/build/
+apps/mini-app/.vite/
+
+# SSH Keys & Secrets
 id_rsa
 id_rsa.pub
+*.pem
+*.key
+*.crt
 
-# Temporary files
+# Temporary & Test Files
+*.tmp
+*.temp
 build.zip
 check_error.txt
 diagnose_*.sh
 apply_*.sql
+*.test
+.coverage
 
-# Ignore heavy panel assets temporarily
+# Agent/Workflow Files
+/.agent
+.workflows/
+actual.md
+log.md
+context7.json
+
+# Panel Assets (Optional - Uncomment if needed)
 # apps/panel/static/
 # apps/panel/migrations/
+
+# macOS Specific
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Docker
+*.env.docker
+docker-compose.override.yml
+
+# Backup Files  
+*.bak
+*.backup
+*~

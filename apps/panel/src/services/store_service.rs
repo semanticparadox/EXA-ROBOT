@@ -1,10 +1,24 @@
 use sqlx::SqlitePool;
 use anyhow::{Context, Result};
-use crate::models::store::{User, Plan, Subscription, GiftCode};
+use crate::models::store::{User, Plan, Subscription, GiftCode, PlanDuration};
 use chrono::{Utc, Duration};
 use tracing::{info, error};
 use uuid::Uuid;
 use serde::{Serialize, Deserialize};
+
+// Quick Wins enums
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RenewalResult {
+    Success { user_id: i64, sub_id: i64, amount: i64, plan_name: String },
+    InsufficientFunds { user_id: i64, sub_id: i64, required: i64, available: i64 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AlertType {
+    Traffic80,
+    Traffic90,
+    Expiry3Days,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct DetailedReferral {
@@ -39,6 +53,10 @@ impl StoreService {
         Self { pool }
     }
 
+    pub fn get_pool(&self) -> SqlitePool {
+        self.pool.clone()
+    }
+
     pub async fn get_categories(&self) -> Result<Vec<crate::models::store::Category>> {
         sqlx::query_as::<_, crate::models::store::Category>(
             "SELECT id, name, description, is_active, sort_order, created_at FROM categories WHERE is_active = 1 ORDER BY sort_order ASC"
@@ -46,6 +64,48 @@ impl StoreService {
         .fetch_all(&self.pool)
         .await
         .context("Failed to fetch categories")
+    }
+
+    pub async fn get_next_sni(&self, current_sni: &str, tier: i32) -> Result<String> {
+        // 1. Exclude current SNI
+        // 2. Filter by tier (try same tier first)
+        // 3. Order by health_score DESC
+        // 4. Return top result
+        
+        let sni: Option<String> = sqlx::query_scalar(
+            "SELECT domain FROM sni_pool 
+             WHERE domain != ? AND tier <= ? AND is_active = 1
+             ORDER BY health_score DESC, tier ASC
+             LIMIT 1"
+        )
+        .bind(current_sni)
+        .bind(tier)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get next SNI")?;
+        
+        Ok(sni.unwrap_or_else(|| "www.google.com".to_string()))
+    }
+
+    pub async fn log_sni_rotation(
+        &self, 
+        node_id: i64, 
+        old_sni: &str, 
+        new_sni: &str, 
+        reason: &str
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO sni_rotation_log (node_id, old_sni, new_sni, reason)
+             VALUES (?, ?, ?, ?)"
+        )
+        .bind(node_id)
+        .bind(old_sni)
+        .bind(new_sni)
+        .bind(reason)
+        .execute(&self.pool)
+        .await
+        .context("Failed to log SNI rotation")?;
+        Ok(())
     }
 
     pub async fn get_products_by_category(&self, category_id: i64) -> Result<Vec<crate::models::store::Product>> {
@@ -107,7 +167,7 @@ impl StoreService {
         // First check if user exists to avoid overwriting referrer_id if it's already set
         let existing = self.get_user_by_tg_id(tg_id).await?;
         
-        let final_referrer_id = if let Some(u) = existing {
+        let final_referrer_id = if let Some(ref u) = existing {
             u.referrer_id
         } else {
             referrer_id
@@ -133,6 +193,12 @@ impl StoreService {
         .fetch_one(&self.pool)
         .await
         .context("Failed to upsert user")?;
+
+        // Analytics Hooks
+        if existing.is_none() {
+             let _ = crate::services::analytics_service::AnalyticsService::track_new_user(&self.pool).await;
+        }
+        let _ = crate::services::analytics_service::AnalyticsService::track_active_user(&self.pool, user.id).await;
 
         Ok(user)
     }
@@ -273,6 +339,10 @@ impl StoreService {
         .await?;
 
         tx.commit().await?;
+
+        // Analytics
+        let _ = crate::services::analytics_service::AnalyticsService::track_order(&self.pool).await;
+
         Ok(sub)
     }
 
@@ -1022,6 +1092,236 @@ impl StoreService {
         Ok(links)
     }
 
+
+
+    pub async fn generate_subscription_file(&self, user_id: i64) -> Result<String> {
+        // 1. Get active subscriptions
+        let subs = self.get_user_subscriptions(user_id).await?;
+        let active_subs: Vec<_> = subs.into_iter().filter(|s| s.sub.status == "active").collect();
+
+        use crate::singbox::client_generator::{ClientGenerator, ClientOutbound, ClientVlessOutbound, ClientHysteria2Outbound, ClientTlsConfig, ClientRealityConfig, ClientObfs};
+        let mut client_outbounds = Vec::new();
+
+        for sub in active_subs {
+            let uuid = sub.sub.vless_uuid.clone().unwrap_or_default();
+            
+            // 2. Get Inbounds for this Plan
+            // Copied from links generation logic
+            let inbounds = sqlx::query_as::<_, crate::models::network::Inbound>(
+                r#"
+                SELECT i.* FROM inbounds i
+                JOIN plan_inbounds pi ON pi.inbound_id = i.id
+                WHERE pi.plan_id = ? AND i.enable = 1
+                "#
+            )
+            .bind(sub.sub.plan_id)
+            .fetch_all(&self.pool)
+            .await?;
+            
+            for inbound in inbounds {
+                use crate::models::network::{StreamSettings, InboundType};
+                let stream: StreamSettings = serde_json::from_str(&inbound.stream_settings).unwrap_or(StreamSettings {
+                    network: "tcp".to_string(),
+                    security: "none".to_string(),
+                    tls_settings: None,
+                    reality_settings: None,
+                });
+
+                let (address, reality_pub) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
+                    let node_details: Option<(String, Option<String>)> = sqlx::query_as("SELECT ip, reality_pub FROM nodes WHERE id = ?")
+                        .bind(inbound.node_id)
+                        .fetch_optional(&self.pool)
+                        .await?;
+                    if let Some((ip, pub_key)) = node_details { (ip, pub_key) } else { (inbound.listen_ip.clone(), None) }
+                } else {
+                     let pub_key: Option<String> = sqlx::query_scalar("SELECT reality_pub FROM nodes WHERE id = ?")
+                        .bind(inbound.node_id)
+                        .fetch_optional(&self.pool)
+                        .await?;
+                    (inbound.listen_ip.clone(), pub_key)
+                };
+
+                let port = inbound.listen_port as u16;
+                let tag = inbound.tag.clone();
+
+                match inbound.protocol.as_str() {
+                    "vless" => {
+                        if stream.security == "reality" {
+                            if let Some(reality) = stream.reality_settings {
+                                let names = if reality.server_names.is_empty() {
+                                    vec!["".to_string()]
+                                } else {
+                                    reality.server_names.clone()
+                                };
+
+                                for (_idx, sni) in names.iter().enumerate() {
+                                    let display_tag = if names.len() > 1 {
+                                        format!("{} ({})", tag, sni)
+                                    } else {
+                                        tag.clone()
+                                    };
+
+                                    let tls_config = ClientTlsConfig {
+                                        enabled: true,
+                                        server_name: sni.clone(),
+                                        insecure: false,
+                                        alpn: Some(vec!["h2".to_string(), "http/1.1".to_string()]),
+                                        utls: Some(crate::singbox::client_generator::UtlsConfig { enabled: true, fingerprint: "chrome".to_string() }),
+                                        reality: Some(ClientRealityConfig {
+                                            enabled: true,
+                                            public_key: reality_pub.clone().unwrap_or_default(),
+                                            short_id: reality.short_ids.first().cloned().unwrap_or_default(),
+                                        })
+                                    };
+
+                                    client_outbounds.push(ClientOutbound::Vless(ClientVlessOutbound {
+                                         tag: display_tag,
+                                         server: address.clone(),
+                                         server_port: port,
+                                         uuid: uuid.clone(),
+                                         flow: Some("xtls-rprx-vision".to_string()),
+                                         packet_encoding: Some("xudp".to_string()),
+                                         tls: Some(tls_config),
+                                    }));
+                                }
+                            }
+                        } else {
+                             // Standard TLS or None
+                             let mut tls_config = None;
+                             if stream.security == "tls" {
+                                 if let Some(tls) = stream.tls_settings {
+                                     tls_config = Some(ClientTlsConfig {
+                                         enabled: true,
+                                         server_name: tls.server_name,
+                                         insecure: false, // Assume true certs
+                                         alpn: None,
+                                         utls: None,
+                                         reality: None,
+                                     });
+                                 }
+                             }
+
+                            client_outbounds.push(ClientOutbound::Vless(ClientVlessOutbound {
+                                 tag,
+                                 server: address,
+                                 server_port: port,
+                                 uuid: uuid.clone(),
+                                 flow: None,
+                                 packet_encoding: Some("xudp".to_string()),
+                                 tls: tls_config,
+                            }));
+                        }
+                    },
+                    "hysteria2" => {
+                        let mut server_name = "drive.google.com".to_string();
+                        let mut insecure = true;
+                        
+                        if let Some(tls) = stream.tls_settings {
+                            server_name = tls.server_name.clone();
+                            if server_name != "drive.google.com" && server_name != "www.yahoo.com" {
+                                insecure = false;
+                            }
+                        }
+
+                        let tg_id: i64 = sqlx::query_scalar("SELECT tg_id FROM users WHERE id = ?")
+                            .bind(sub.sub.user_id)
+                            .fetch_optional(&self.pool)
+                            .await?
+                            .unwrap_or(0);
+                        
+                        // Auth is "user:pass"
+                        let password = format!("{}:{}", tg_id, uuid.replace("-", ""));
+                        
+                        let mut obfs = None;
+                        if let Ok(InboundType::Hysteria2(settings)) = serde_json::from_str::<InboundType>(&inbound.settings) {
+                            if let Some(o) = settings.obfs {
+                                obfs = Some(ClientObfs {
+                                    ttype: o.ttype,
+                                    password: o.password,
+                                });
+                            }
+                        }
+
+                        client_outbounds.push(ClientOutbound::Hysteria2(ClientHysteria2Outbound {
+                            tag,
+                            server: address,
+                            server_port: port,
+                            password,
+                            tls: ClientTlsConfig {
+                                enabled: true,
+                                server_name,
+                                insecure,
+                                alpn: Some(vec!["h3".to_string()]),
+                                utls: None,
+                                reality: None,
+                            },
+                            obfs,
+                        }));
+                    },
+                    "amneziawg" => {
+                        // Parse AmneziaWG settings to get obfuscation params
+                        if let Ok(InboundType::AmneziaWg(settings)) = serde_json::from_str::<InboundType>(&inbound.settings) {
+                            // Generate client keypair
+                            let (client_priv, _client_pub) = {
+                                use std::process::Command;
+                                let output = Command::new("sing-box")
+                                    .args(&["generate", "wireguard-keypair"])
+                                    .output();
+                                
+                                if let Ok(output) = output {
+                                    if output.status.success() {
+                                        let output_str = String::from_utf8_lossy(&output.stdout);
+                                        let mut priv_key = String::new();
+                                        let mut pub_key = String::new();
+                                        
+                                        for line in output_str.lines() {
+                                            if let Some(key) = line.strip_prefix("PrivateKey:") {
+                                                priv_key = key.trim().to_string();
+                                            } else if let Some(key) = line.strip_prefix("PublicKey:") {
+                                                pub_key = key.trim().to_string();
+                                            }
+                                        }
+                                        (priv_key, pub_key)
+                                    } else {
+                                        continue;
+                                    }
+                                } else {
+                                    continue;
+                                }
+                            };
+
+                            let client_ip = format!("10.10.0.{}/32", 2 + client_outbounds.len());
+                            
+                            use crate::singbox::client_generator::ClientAmneziaWgOutbound;
+                            client_outbounds.push(ClientOutbound::AmneziaWg(ClientAmneziaWgOutbound {
+                                tag,
+                                server: address,
+                                server_port: port,
+                                local_address: vec![client_ip],
+                                private_key: client_priv,
+                                peer_public_key: settings.private_key,
+                                preshared_key: None,
+                                jc: settings.jc,
+                                jmin: settings.jmin,
+                                jmax: settings.jmax,
+                                s1: settings.s1,
+                                s2: settings.s2,
+                                h1: settings.h1,
+                                h2: settings.h2,
+                                h3: settings.h3,
+                                h4: settings.h4,
+                            }));
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+
+        let profile = ClientGenerator::generate(client_outbounds, "ru");
+        Ok(serde_json::to_string_pretty(&profile)?)
+    }
+
     pub async fn generate_subscription_links(&self, user_id: i64) -> Result<Vec<String>> {
         let mut links = Vec::new();
 
@@ -1355,5 +1655,170 @@ impl StoreService {
         tx.commit().await?;
         
         Ok((refunded_users, total_refunded_cents))
+    }
+
+    // ========== Quick Wins Features ==========
+    
+    /// Toggle auto-renewal for a subscription
+    pub async fn toggle_auto_renewal(&self, subscription_id: i64) -> Result<bool> {
+        let current: bool = sqlx::query_scalar::<_, Option<i32>>("SELECT auto_renew FROM subscriptions WHERE id = ?")
+            .bind(subscription_id)
+            .fetch_one(&self.pool)
+            .await?
+            .map(|v| v != 0)
+            .unwrap_or(false);
+        
+        let new_value = !current;
+        
+        sqlx::query("UPDATE subscriptions SET auto_renew = ? WHERE id = ?")
+            .bind(new_value as i32)
+            .bind(subscription_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(new_value)
+    }
+    
+    /// Process all auto-renewals for subscriptions expiring in next 24h
+    pub async fn process_auto_renewals(&self) -> Result<Vec<RenewalResult>> {
+        let subs = sqlx::query_as::<_, (i64, i64, i64, String, i64)>(
+            "SELECT s.id, s.user_id, s.plan_id, p.name, u.balance 
+             FROM subscriptions s
+             JOIN users u ON s.user_id = u.id
+             JOIN plans p ON s.plan_id = p.id
+             WHERE COALESCE(s.auto_renew, 0) = 1
+             AND s.status = 'active'
+             AND datetime(s.expires_at) BETWEEN datetime('now') AND datetime('now', '+1 day')"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let mut results = vec![];
+        
+        for (sub_id, user_id, plan_id, plan_name, balance) in subs {
+            let price = sqlx::query_scalar::<_, i64>(
+                "SELECT price FROM plan_durations WHERE plan_id = ? ORDER BY duration_days LIMIT 1"
+            )
+            .bind(plan_id)
+            .fetch_one(&self.pool)
+            .await?;
+            
+            if balance >= price {
+                sqlx::query("UPDATE subscriptions SET expires_at = datetime(expires_at, '+30 days') WHERE id = ?")
+                    .bind(sub_id)
+                    .execute(&self.pool)
+                    .await?;
+                
+                sqlx::query("UPDATE users SET balance = balance - ? WHERE id = ?")
+                    .bind(price)
+                    .bind(user_id)
+                    .execute(&self.pool)
+                    .await?;
+                
+                info!("Auto-renewed subscription {} for user {}", sub_id, user_id);
+                results.push(RenewalResult::Success { user_id, sub_id, amount: price, plan_name });
+            } else {
+                results.push(RenewalResult::InsufficientFunds { user_id, sub_id, required: price, available: balance });
+            }
+        }
+        
+        Ok(results)
+    }
+    
+    /// Get the free trial plan
+    pub async fn get_trial_plan(&self) -> Result<Plan> {
+        let mut plan = sqlx::query_as::<_, Plan>(
+            "SELECT * FROM plans WHERE COALESCE(is_trial, 0) = 1 AND is_active = 1 LIMIT 1"
+        )
+        .fetch_one(&self.pool)
+        .await
+        .context("Trial plan not configured")?;
+        
+        plan.durations = sqlx::query_as::<_, PlanDuration>(
+            "SELECT * FROM plan_durations WHERE plan_id = ?"
+        )
+        .bind(plan.id)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        Ok(plan)
+    }
+    
+    /// Mark user as having used their free trial
+    pub async fn mark_trial_used(&self, user_id: i64) -> Result<()> {
+        sqlx::query("UPDATE users SET trial_used = 1, trial_used_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    
+    /// Create a trial subscription
+    pub async fn create_trial_subscription(&self, user_id: i64, plan_id: i64) -> Result<i64> {
+        let duration = sqlx::query_as::<_, PlanDuration>(
+            "SELECT * FROM plan_durations WHERE plan_id = ? LIMIT 1"
+        )
+        .bind(plan_id)
+        .fetch_one(&self.pool)
+        .await?;
+        
+        let sub_id: i64 = sqlx::query_scalar(
+            "INSERT INTO subscriptions 
+             (user_id, plan_id, status, expires_at, used_traffic, is_trial, created_at) 
+             VALUES (?, ?, 'active', datetime('now', '+' || ? || ' days'), 0, 1, CURRENT_TIMESTAMP) 
+             RETURNING id"
+        )
+        .bind(user_id)
+        .bind(plan_id)
+        .bind(duration.duration_days)
+        .fetch_one(&self.pool)
+        .await?;
+        
+        info!("Created trial subscription {} for user {}", sub_id, user_id);
+        Ok(sub_id)
+    }
+    
+    /// Check and send traffic/expiry alerts (returns list of users who need alerts)
+    pub async fn check_traffic_alerts(&self) -> Result<Vec<(i64, AlertType, i64)>> {
+        let mut alerts_to_send = vec![];
+        
+        let subs = sqlx::query_as::<_, (i64, i64, i64, i64, String)>(
+            "SELECT s.id, s.user_id, s.used_traffic, pd.traffic_gb, COALESCE(s.alerts_sent, '[]') 
+             FROM subscriptions s
+             JOIN plan_durations pd ON s.plan_id = pd.plan_id
+             WHERE s.status = 'active' AND pd.traffic_gb > 0"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        
+        for (sub_id, user_id, used_bytes, traffic_gb, alerts_json) in subs {
+            if traffic_gb == 0 { continue; }
+            
+            let total_bytes = traffic_gb as i64 * 1024 * 1024 * 1024;
+            let percentage = (used_bytes as f64 / total_bytes as f64) * 100.0;
+            
+            let mut alerts: Vec<String> = serde_json::from_str(&alerts_json).unwrap_or_default();
+            
+            if percentage >= 80.0 && !alerts.contains(&"80_percent".to_string()) {
+                alerts_to_send.push((user_id, AlertType::Traffic80, sub_id));
+                alerts.push("80_percent".to_string());
+            }
+            
+            if percentage >= 90.0 && !alerts.contains(&"90_percent".to_string()) {
+                alerts_to_send.push((user_id, AlertType::Traffic90, sub_id));
+                alerts.push("90_percent".to_string());
+            }
+            
+            if !alerts.is_empty() {
+                let alerts_json = serde_json::to_string(&alerts)?;
+                sqlx::query("UPDATE subscriptions SET alerts_sent = ? WHERE id = ?")
+                    .bind(&alerts_json)
+                    .bind(sub_id)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+        
+        Ok(alerts_to_send)
     }
 }

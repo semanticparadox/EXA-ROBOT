@@ -20,6 +20,13 @@ Routes used by the Node Agent to communicate with the Panel.
 | `POST` | `/api/v2/node/heartbeat` | `api::v2::node::heartbeat` | Node status reporting |
 | `GET` | `/api/v2/node/config` | `api::v2::node::get_config` | Fetch Sing-box configuration |
 
+## 🧠 Client API V2 (AI)
+Routes used by Client App/Panel for intelligent features.
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| `GET` | `/api/v2/client/recommended` | `api::v2::client::get_recommended_nodes` | Get optimal servers based on latency/load |
+
 ## 🛡️ Admin Routes (Authenticated)
 All routes below are prefixed with `/{admin_path}` (Default: `/admin`) and require an active session.
 
@@ -45,7 +52,9 @@ All routes below are prefixed with `/{admin_path}` (Default: `/admin`) and requi
 | `POST` | `/nodes/:id/sync` | `sync_node` | Force config sync |
 | `GET` | `/nodes/:id/logs` | `node_control::pull_node_logs` | View agent logs |
 | `POST` | `/nodes/:id/restart` | `node_control::restart_node_service` | Restart agent/VPN |
-| `DELETE` | `/nodes/:id/delete` | `delete_node` | Remove node |    
+| `DELETE` | `/nodes/:id/delete` | `delete_node` | Remove node |
+| `POST` | `/api/admin/frontend-servers` | `handlers::frontend::register` | Register new frontend |
+    
 
 ### Network Configuration (Inbounds)
 | Method | Path | Handler | Description |

@@ -1,0 +1,21 @@
+# Frontend Binary Build Configuration
+
+[build]
+# Embed Mini App static files
+embed_mini_app = true
+mini_app_dist = "../mini-app/dist"
+
+# Binary optimization
+[profile.release]
+opt-level = "z"          # Optimize for size
+lto = true               # Link-time optimization
+codegen-units = 1
+strip = true             # Strip symbols
+panic = "abort"
+
+# Cross-compilation targets
+[target.x86_64-unknown-linux-gnu]
+linker = "x86_64-linux-gnu-gcc"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"

@@ -3,21 +3,24 @@ mod settings;
 mod handlers;
 mod bot;
 mod bot_manager;
-mod node_manager;
+
 mod scripts;
 mod singbox;
 mod cli;
 mod models;
 mod services;
 mod api;
+mod subscription;
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::time::Instant;
 use std::io;
 use db::init_db;
 use settings::SettingsService;
 use bot_manager::BotManager;
-use node_manager::NodeManager;
+
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -33,12 +36,18 @@ pub struct AppState {
     pub pool: sqlx::SqlitePool,
     pub settings: Arc<SettingsService>,
     pub bot_manager: Arc<BotManager>,
-    pub node_manager: Arc<NodeManager>,
+
     pub store_service: Arc<services::store_service::StoreService>,
     pub orchestration_service: Arc<services::orchestration_service::OrchestrationService>,
     pub pay_service: Arc<services::pay_service::PayService>,
+    pub export_service: Arc<services::export_service::ExportService>,
+    pub channel_trial_service: Arc<services::channel_trial_service::ChannelTrialService>,
+    pub notification_service: Arc<services::notification_service::NotificationService>,
+    pub redis: Arc<services::redis_service::RedisService>, // NEW
+    pub pubsub: Arc<services::pubsub_service::PubSubService>, // NEW
     pub ssh_public_key: String,
-    pub session_secret: String,
+    // Format: IP -> (Lat, Lon, Timestamp)
+    pub geo_cache: Arc<Mutex<HashMap<String, (f64, f64, Instant)>>>,
 }
 
 #[derive(Parser)]
@@ -95,7 +104,10 @@ async fn auth_middleware(
     }
 
     if let Some(cookie) = jar.get("admin_session") {
-        if cookie.value() == state.session_secret {
+        let token = cookie.value();
+        let redis_key = format!("session:{}", token);
+        // Check if token exists in Redis
+        if let Ok(Some(_)) = state.redis.get(&redis_key).await {
             return next.run(req).await;
         }
     }
@@ -153,6 +165,7 @@ async fn main() -> Result<()> {
                     println!("\n=== EXA ROBOT INFO ===");
                     println!("Admin Path: {}", admin_path);
                     println!("Login URL:  <YOUR_DOMAIN>{}/login", admin_path);
+                    println!("Redis URL:  {}", std::env::var("REDIS_URL").unwrap_or("redis://127.0.0.1:6379".to_string()));
                     println!("======================\n");
                 }
             }
@@ -169,14 +182,21 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
     // Initialize settings service
     let settings = Arc::new(SettingsService::new(pool.clone()).await?);
     
-    // ... rest of run_server ... (No changes here, line 135+ is fine)
-    // BUT we need to make sure AppState uses ssh_public_key we passed
-    
     // Initialize bot manager
     let bot_manager = Arc::new(BotManager::new());
 
-    // Initialize node manager
-    let node_manager = Arc::new(NodeManager::new(pool.clone()));
+    // Initialize Redis
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    // Check if redis_url actually starts with redis://, if not, assume it's just host:port or similar and prefix, or default
+    // Basic fallback for robust dev env
+    let redis_service = match services::redis_service::RedisService::new(&redis_url).await {
+        Ok(r) => Arc::new(r),
+        Err(e) => {
+             // Fallback to internal/mock if real redis fails? For now failure is fatal as planned.
+             tracing::error!("Redis connection failed: {}. Ensure Redis is running.", e);
+             return Err(e);
+        }
+    };
 
     // Initialize store service
     let store_service = Arc::new(services::store_service::StoreService::new(pool.clone()));
@@ -189,26 +209,43 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
 
     let pay_token = settings.get_or_default("payment_api_key", "").await;
     let nowpayments_key = settings.get_or_default("nowpayments_key", "").await;
+    let crystalpay_login = settings.get_or_default("crystalpay_login", "").await;
+    let crystalpay_secret = settings.get_or_default("crystalpay_secret", "").await;
+    let stripe_secret_key = settings.get_or_default("stripe_secret_key", "").await;
+    let is_testnet: String = settings.get_or_default("payment_testnet", "true").await;
+    
     let pay_service = Arc::new(services::pay_service::PayService::new(
         pool.clone(),
         store_service.clone(),
         bot_manager.clone(),
         pay_token,
         nowpayments_key,
-        true, // Testnet for now
+        crystalpay_login,
+        crystalpay_secret,
+        stripe_secret_key,
+        is_testnet == "true",
     ));
+
+    let export_service = Arc::new(services::export_service::ExportService::new(pool.clone()));
+    let channel_trial_service = Arc::new(services::channel_trial_service::ChannelTrialService::new(pool.clone()));
+    let notification_service = Arc::new(services::notification_service::NotificationService::new(pool.clone()));
 
     // App state
     let state = AppState {
         pool,
         settings,
         bot_manager,
-        node_manager,
+
         store_service,
         orchestration_service,
         pay_service,
+        export_service,
+        channel_trial_service,
+        notification_service,
+        redis: redis_service, // NEW
+        pubsub: Arc::new(services::pubsub_service::PubSubService::new(redis_url).await.expect("Failed to init PubSub")), // NEW
         ssh_public_key,
-        session_secret: uuid::Uuid::new_v4().to_string(),
+        geo_cache: Arc::new(Mutex::new(HashMap::new())),
     };
     
     // ... rest of function ...
@@ -262,7 +299,14 @@ use tower_http::services::ServeDir;
         .route("/settings", axum::routing::get(handlers::admin::get_settings))
         .route("/settings/save", axum::routing::post(handlers::admin::save_settings))
         .route("/settings/bot/toggle", axum::routing::post(handlers::admin::toggle_bot))
+        // Tools page - DB Export & Trial Configuration
+        .route("/tools", axum::routing::get(handlers::admin::get_tools_page))
+        .route("/tools/export", axum::routing::get(handlers::admin::db_export_download))
+        .route("/tools/trial-config", axum::routing::post(handlers::admin::update_trial_config))
+        .route("/traffic", axum::routing::get(handlers::admin::get_traffic_analytics)) // NEW
+        .route("/logs", axum::routing::get(handlers::admin::get_system_logs_page)) // NEW
         .route("/nodes", axum::routing::get(handlers::admin::get_nodes))
+
         .route("/nodes/install", axum::routing::post(handlers::admin::install_node))
         .route("/nodes/:id/edit", axum::routing::get(handlers::admin::get_node_edit))
         .route("/nodes/:id/update", axum::routing::post(handlers::admin::update_node))
@@ -289,6 +333,24 @@ use tower_http::services::ServeDir;
         .route("/users/subs/:id/refund", axum::routing::post(handlers::admin::refund_user_subscription))
         .route("/users/subs/:id/extend", axum::routing::post(handlers::admin::extend_user_subscription))
         .route("/subs/:id/devices", axum::routing::get(handlers::admin::get_subscription_devices))
+        .route("/analytics", axum::routing::get(handlers::admin::analytics))
+        
+        // Frontend Servers
+        .route("/frontends", axum::routing::get(handlers::admin::get_frontends))
+        .route("/api/admin/frontends", axum::routing::get(handlers::frontend::list_frontends).post(handlers::frontend::create_frontend))
+        .route("/api/admin/frontends/:region", axum::routing::get(handlers::frontend::get_active_frontends))
+        .route("/api/admin/frontends/:id", axum::routing::delete(handlers::frontend::delete_frontend))
+        .route("/api/admin/frontends/:id/rotate-token", axum::routing::post(handlers::frontend::rotate_token))
+        .route("/api/admin/frontends/:domain/heartbeat", axum::routing::post(handlers::frontend::frontend_heartbeat))
+        
+        // Client API (Mini App)
+        .route("/api/client/auth/telegram", axum::routing::post(handlers::client::auth_telegram))
+        .route("/api/client/user/stats", axum::routing::get(handlers::client::get_user_stats))
+        .route("/api/client/user/subscriptions", axum::routing::get(handlers::client::get_user_subscriptions))
+        .route("/api/client/nodes", axum::routing::get(handlers::client::get_client_nodes))
+        .route("/api/client/user/payments", axum::routing::get(handlers::client::get_user_payments))
+        .route("/api/client/user/referrals", axum::routing::get(handlers::client::get_user_referrals))
+        
         .route("/transactions", axum::routing::get(handlers::admin::get_transactions))
         .route("/bot-logs", axum::routing::get(handlers::admin::bot_logs_page))
         .route("/bot-logs/history", axum::routing::get(handlers::admin::bot_logs_history))
@@ -318,10 +380,19 @@ use tower_http::services::ServeDir;
         .route(&format!("{}/setup", admin_path), axum::routing::get(handlers::setup::get_setup))
         .route(&format!("{}/setup/create_admin", admin_path), axum::routing::post(handlers::setup::create_admin))
         .route(&format!("{}/setup/restore_backup", admin_path), axum::routing::post(handlers::setup::restore_backup))
-        .route("/api/payments/cryptobot", axum::routing::post(handlers::admin::handle_payment))
+        .route("/api/payments/:source", axum::routing::post(handlers::admin::handle_payment))
         // Agent V2 API
         .route("/api/v2/node/heartbeat", axum::routing::post(api::v2::node::heartbeat))
         .route("/api/v2/node/config", axum::routing::get(api::v2::node::get_config))
+        .route("/api/v2/node/rotate-sni", axum::routing::post(api::v2::node::rotate_sni))
+        .route("/api/v2/node/update-info", axum::routing::get(api::v2::node::get_update_info))
+        .route("/api/v2/node/updates/poll", axum::routing::get(api::v2::node::poll_updates)) // NEW
+        .route("/api/v2/node/settings", axum::routing::get(api::v2::node::get_settings)) // NEW
+        .route("/api/v2/client/recommended", axum::routing::get(api::v2::client::get_recommended_nodes)) // AI Routing
+        // Client API
+        .nest("/api/client", api::client::routes(state.clone()))
+        // Public Subscription URL endpoint
+        .route("/sub/:uuid", axum::routing::get(subscription::subscription_handler))
         .nest(&admin_path, admin_routes)
         .with_state(state)
         .layer(tower_http::compression::CompressionLayer::new())

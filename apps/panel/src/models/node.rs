@@ -20,4 +20,17 @@ pub struct Node {
     pub auto_configure: bool,
     pub is_enabled: bool, // Added in migration 004
     pub country_code: Option<String>,
+    pub reality_sni: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+
+    // Bandwidth Shaping & Policies
+    #[sqlx(default)]
+    pub config_qos_enabled: bool,
+    #[sqlx(default)]
+    pub config_block_torrent: bool,
+    #[sqlx(default)]
+    pub config_block_ads: bool,
+    #[sqlx(default)]
+    pub config_block_porn: bool,
 }

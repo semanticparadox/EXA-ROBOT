@@ -15,8 +15,11 @@ pub struct User {
     pub language_code: Option<String>,
     pub terms_accepted_at: Option<DateTime<Utc>>,
     pub warning_count: i32,
+    pub trial_used: Option<bool>,
+    pub trial_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Plan {
@@ -26,10 +29,12 @@ pub struct Plan {
     pub is_active: bool,
     pub traffic_limit_gb: i32,
     pub device_limit: i32,
+    pub is_trial: Option<bool>,
     pub created_at: DateTime<Utc>,
     #[sqlx(skip)]
     pub durations: Vec<PlanDuration>,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct PlanDuration {
@@ -52,8 +57,14 @@ pub struct Subscription {
     pub used_traffic: i64,
     pub traffic_updated_at: Option<DateTime<Utc>>,
     pub note: Option<String>,
+    pub auto_renew: Option<bool>,
+    pub alerts_sent: Option<String>, // JSON array: ["80_percent", "90_percent"]
+    pub is_trial: Option<bool>,
+    pub subscription_uuid: String,  // For subscription URLs
+    pub last_sub_access: Option<DateTime<Utc>>, // Track subscription URL access
     pub created_at: DateTime<Utc>,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct PromoCode {
@@ -140,4 +151,25 @@ pub struct SubscriptionIpTracking {
     pub subscription_id: i64,
     pub client_ip: String,
     pub last_seen_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SniPool {
+    pub id: i64,
+    pub domain: String,
+    pub tier: i32,
+    pub health_score: i32,
+    pub last_check: Option<DateTime<Utc>>,
+    pub is_active: bool,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SniRotationLog {
+    pub id: i64,
+    pub node_id: i64,
+    pub old_sni: String,
+    pub new_sni: String,
+    pub reason: Option<String>,
+    pub rotated_at: DateTime<Utc>,
 }

@@ -142,6 +142,74 @@ impl OrchestrationService {
             .bind(serde_json::to_string(&hy2_stream)?)
             .execute(&self.pool)
             .await?;
+
+        // 3. AmneziaWG
+        // Pre-generate random values to avoid Send trait issues with ThreadRng
+        let (awg_jc, awg_jmin, awg_jmax, awg_s1, awg_s2, awg_h1, awg_h2, awg_h3, awg_h4) = {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            (
+                rng.gen_range(3..=10),
+                rng.gen_range(40..=100),
+                rng.gen_range(500..=1000),
+                rng.gen_range(20..=100),
+                rng.gen_range(20..=100),
+                rng.r#gen::<u32>(),
+                rng.r#gen::<u32>(),
+                rng.r#gen::<u32>(),
+                rng.r#gen::<u32>(),
+            )
+        };
+        
+        // Generate WireGuard Keypair
+        let (awg_priv, _awg_pub) = {
+            use std::process::Command;
+            let output = Command::new("sing-box")
+                .args(&["generate", "wireguard-keypair"])
+                .output()
+                .map_err(|e| anyhow::anyhow!("Failed to execute sing-box generate (awg): {}", e))?;
+            
+            if !output.status.success() {
+                return Err(anyhow::anyhow!("sing-box generate awg failed"));
+            }
+            
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            let mut priv_key = String::new();
+            let mut pub_key = String::new();
+            
+            for line in output_str.lines() {
+                if let Some(key) = line.strip_prefix("PrivateKey:") {
+                    priv_key = key.trim().to_string();
+                } else if let Some(key) = line.strip_prefix("PublicKey:") {
+                    pub_key = key.trim().to_string();
+                }
+            }
+            (priv_key, pub_key)
+        };
+
+        let awg_settings = crate::models::network::AmneziaWgSettings {
+            users: vec![],
+            private_key: awg_priv,
+            listen_port: 51820,
+            jc: awg_jc,
+            jmin: awg_jmin,
+            jmax: awg_jmax,
+            s1: awg_s1,
+            s2: awg_s2,
+            h1: awg_h1,
+            h2: awg_h2,
+            h3: awg_h3,
+            h4: awg_h4,
+        };
+
+        let awg_json = serde_json::to_string(&InboundType::AmneziaWg(awg_settings))?;
+        
+        sqlx::query("INSERT INTO inbounds (node_id, tag, protocol, listen_port, settings, stream_settings, enable) VALUES (?, ?, 'amneziawg', 51820, ?, '{}', 1)")
+            .bind(node_id)
+            .bind(format!("amneziawg-{}", node_id))
+            .bind(awg_json)
+            .execute(&self.pool)
+            .await?;
             
         Ok(())
     }
@@ -165,6 +233,28 @@ impl OrchestrationService {
             .bind(node_id)
             .fetch_all(&self.pool)
             .await?;
+
+        // Dynamic SNI Override (for Auto Rotation)
+        if let Some(new_sni) = &node.reality_sni {
+            use crate::models::network::StreamSettings;
+            
+            for inbound in &mut inbounds {
+                // Try to parse stream settings
+                if let Ok(mut stream) = serde_json::from_str::<StreamSettings>(&inbound.stream_settings) {
+                    // Check if Reality is enabled
+                    if let Some(reality) = &mut stream.reality_settings {
+                        info!("🔄 Applying Dynamic SNI for inbound {}: {}", inbound.tag, new_sni);
+                        reality.server_names = vec![new_sni.clone()];
+                        reality.dest = format!("{}:443", new_sni);
+                        
+                        // Serialize back to inbound.stream_settings
+                        if let Ok(new_json) = serde_json::to_string(&stream) {
+                            inbound.stream_settings = new_json;
+                        }
+                    }
+                }
+            }
+        }
 
         info!("Step 3: Injecting users for {} inbounds", inbounds.len());
         // 3. For each inbound, inject authorized users
@@ -265,8 +355,9 @@ impl OrchestrationService {
 
         info!("Step 4: generating final sing-box config JSON");
         // 4. Generate Config
+        // 4. Generate Config
         let config = ConfigGenerator::generate_config(
-            &node.ip,
+            &node,
             inbounds
         );
         

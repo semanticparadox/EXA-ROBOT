@@ -30,6 +30,7 @@ NODE_TOKEN=""
 DOMAIN=""
 ADMIN_PATH="" # Default empty to force prompt or use intelligent default later
 FORCE_INSTALL=false
+SKIP_GPG_CHECK=${SKIP_GPG_CHECK:-false}  # Allow GPG check skip via env var
 
 # --------------------------------------------------
 # Logging
@@ -38,6 +39,50 @@ log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# --------------------------------------------------
+# GPG Signature Verification (Security)
+# --------------------------------------------------
+verify_gpg_signature() {
+    # Skip if explicitly requested
+    if [[ "$SKIP_GPG_CHECK" == "true" ]]; then
+        log_warn "GPG verification skipped (--skip-gpg-check flag)"
+        return 0
+    fi
+    
+    # Skip if running from stdin pipe (can't verify)
+    if [ ! -f "$0" ]; then
+        log_info "Running from stdin - GPG verification skipped"
+        log_info "For maximum security, download and verify manually"
+        return 0
+    fi
+    
+    # Check if GPG is available
+    if ! command -v gpg &> /dev/null; then
+        log_info "GPG not installed - signature verification skipped"
+        return 0
+    fi
+    
+    # Look for .asc signature file
+    local sig_path="${0}.asc"
+    if [ ! -f "$sig_path" ]; then
+        log_info "No signature file found - verification skipped"
+        return 0
+    fi
+    
+    log_info "Verifying GPG signature..."
+    if gpg --verify "$sig_path" "$0" 2>&1 | grep -q "Good signature"; then
+        log_success "GPG signature verified"
+        return 0
+    else
+        log_error "GPG signature verification FAILED!"
+        log_error "This could indicate tampering. Use --skip-gpg-check to override (NOT RECOMMENDED)"
+        exit 1
+    fi
+}
+
+# Run GPG verification early
+verify_gpg_signature
 
 # --------------------------------------------------
 # Pre-checks
@@ -581,6 +626,181 @@ EOF
     
     log_success "Agent installed."
 }
+# Frontend installation helper functions - to be inserted into install.sh
+
+# --------------------------------------------------
+# Frontend Installation Function
+# --------------------------------------------------
+configure_frontend() {
+    log_info "Installing Frontend Module..."
+    
+    # Validate required arguments
+    if [[ -z "$FRONTEND_DOMAIN" ]] || [[ -z "$FRONTEND_TOKEN" ]] || [[ -z "$FRONTEND_REGION" ]]; then
+        log_error "Frontend installation requires: --domain, --token, --region"
+        exit 1
+    fi
+    
+    if [[ -z "$PANEL_URL" ]]; then
+        log_error "Frontend installation requires: --panel <URL>"
+        exit 1
+    fi
+    
+    # Download frontend binary
+    log_info "Downloading frontend binary..."
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        BINARY_URL="${PANEL_URL}/downloads/exarobot-frontend-linux-amd64"
+    elif [ "$ARCH" = "aarch64" ]; then
+        BINARY_URL="${PANEL_URL}/downloads/exarobot-frontend-linux-arm64"
+    else
+        log_error "Unsupported architecture: $ARCH"
+        exit 1
+    fi
+    
+    mkdir -p /usr/local/bin
+    wget -q --show-progress -O /usr/local/bin/exarobot-frontend "$BINARY_URL" || {
+        log_error "Failed to download frontend binary"
+        exit 1
+    }
+    chmod +x /usr/local/bin/exarobot-frontend
+    log_success "Binary installed"
+    
+    # Create configuration
+    log_info "Creating configuration..."
+    mkdir -p /etc/exarobot
+    cat > /etc/exarobot/frontend.toml <<EOF
+domain = "$FRONTEND_DOMAIN"
+panel_url = "$PANEL_URL"
+auth_token = "$FRONTEND_TOKEN"
+region = "$FRONTEND_REGION"
+listen_port = ${FRONTEND_PORT:-8080}
+EOF
+    chmod 600 /etc/exarobot/frontend.toml
+    log_success "Configuration created"
+    
+    # Install Caddy for HTTPS
+    install_caddy_if_needed
+    
+    # Configure Caddy reverse proxy
+    configure_caddy_for_frontend
+    
+    # Create systemd service
+    create_frontend_service
+    
+    # Register with panel
+    register_with_panel
+    
+    log_success "Frontend installed: https://$FRONTEND_DOMAIN"
+}
+
+# Helper: Install Caddy
+install_caddy_if_needed() {
+    if command -v caddy &> /dev/null; then
+        log_info "Caddy already installed"
+        return
+    fi
+    
+    log_info "Installing Caddy..."
+    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+        apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl > /dev/null 2>&1
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
+        apt-get update -qq
+        apt-get install -y -qq caddy > /dev/null 2>&1
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+        yum install yum-plugin-copr -y -q
+        yum copr enable @caddy/caddy -y -q
+        yum install caddy -y -q
+    fi
+    log_success "Caddy installed"
+}
+
+# Helper: Configure Caddy
+configure_caddy_for_frontend() {
+    log_info "Configuring Caddy reverse proxy..."
+    cat > /etc/caddy/Caddyfile <<EOF
+\$FRONTEND_DOMAIN {
+    reverse_proxy localhost:\${FRONTEND_PORT:-8080}
+    
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "no-referrer-when-downgrade"
+    }
+    
+    log {
+        output file /var/log/caddy/frontend.log
+        format json
+    }
+}
+EOF
+
+    mkdir -p /var/log/caddy
+    chown caddy:caddy /var/log/caddy 2>/dev/null || true
+    
+    systemctl enable caddy > /dev/null 2>&1
+    systemctl restart caddy
+    log_success "Caddy configured"
+}
+
+# Helper: Create systemd service
+create_frontend_service() {
+    log_info "Creating systemd service..."
+    cat > /etc/systemd/system/exarobot-frontend.service <<EOF
+[Unit]
+Description=EXA-ROBOT Frontend Module
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/lib/exarobot
+ExecStart=/usr/local/bin/exarobot-frontend --config /etc/exarobot/frontend.toml
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/exarobot
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    mkdir -p /var/lib/exarobot
+    systemctl daemon-reload
+    systemctl enable exarobot-frontend > /dev/null 2>&1
+    systemctl start exarobot-frontend
+    log_success "Service created and started"
+}
+
+# Helper: Register with panel
+register_with_panel() {
+    log_info "Registering with main panel..."
+    SERVER_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || echo "unknown")
+    
+    sleep 3  # Wait for service to start
+    
+    curl -X POST "$PANEL_URL/api/admin/frontend-servers" \
+      -H "Authorization: Bearer $FRONTEND_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"domain\": \"$FRONTEND_DOMAIN\",
+        \"ip_address\": \"$SERVER_IP\",
+        \"region\": \"$FRONTEND_REGION\"
+      }" > /dev/null 2>&1 || {
+        log_warn "Could not register with panel automatically"
+        log_warn "Please register manually from admin dashboard"
+    }
+    log_success "Registration attempt complete"
+}
 
 # --------------------------------------------------
 # Main Logic
@@ -596,10 +816,20 @@ main() {
             --role) ROLE="$2"; shift ;;
             --panel) PANEL_URL="$2"; shift ;;
             --port) PANEL_PORT="$2"; shift ;;
-            --token) NODE_TOKEN="$2"; shift ;;
-            --domain) DOMAIN="$2"; shift ;;
+            --token) 
+                # Token used for both frontend and agent
+                FRONTEND_TOKEN="$2"
+                NODE_TOKEN="$2"
+                shift ;;
+            --domain) 
+                # Domain used for both panel and frontend
+                DOMAIN="$2"
+                FRONTEND_DOMAIN="$2"
+                shift ;;
+            --region) FRONTEND_REGION="$2"; shift ;;
             --admin-path) ADMIN_PATH="$2"; shift ;;
             --force) FORCE_INSTALL=true ;;
+            --skip-gpg-check) SKIP_GPG_CHECK=true ;;  # Security: skip GPG verification
             *) echo "Unknown parameter: $1"; exit 1 ;;
         esac
         shift
@@ -609,7 +839,8 @@ main() {
         echo "Select installation role:"
         echo "1) Panel"
         echo "2) Agent"
-        echo "3) Both"
+        echo "3) Frontend"
+        echo "4) Both (Panel + Agent)"
         # Robust read
         set +e
         if [ -t 0 ]; then
@@ -622,7 +853,8 @@ main() {
         case $C in
             1) ROLE="panel" ;;
             2) ROLE="agent" ;;
-            3) ROLE="both" ;;
+            3) ROLE="frontend" ;;
+            4) ROLE="both" ;;
             *) exit 1 ;;
         esac
     fi
@@ -695,6 +927,9 @@ EOF
         cp "$BUILD_SOURCE/target/release/exarobot-agent" "$INSTALL_DIR/"
         chmod +x "$INSTALL_DIR/exarobot-agent"
         configure_agent
+    elif [[ "$ROLE" == "frontend" ]]; then
+        # Frontend doesn't need compilation, downloads binary directly
+        configure_frontend
     else
         # If we ARE NOT an agent, ensure old agent services are gone
         log_info "Ensuring Agent service is disabled (Role: $ROLE)..."

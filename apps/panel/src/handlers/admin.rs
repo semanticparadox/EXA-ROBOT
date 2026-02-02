@@ -25,6 +25,16 @@ pub struct SettingsTemplate {
     pub is_auth: bool,
     pub admin_path: String,
     pub active_page: String,
+
+    // Decoy Settings
+    pub decoy_enabled: bool,
+    pub decoy_urls: String,
+    pub decoy_min_interval: String,
+    pub decoy_max_interval: String,
+
+    // Kill Switch Settings
+    pub kill_switch_enabled: bool,
+    pub kill_switch_timeout: String,
 }
 
 
@@ -99,6 +109,35 @@ pub struct TransactionsTemplate {
     pub active_page: String,
 }
 
+#[derive(Clone, serde::Serialize, sqlx::FromRow)]
+pub struct DailyStat {
+    pub date: String, // YYYY-MM-DD
+    pub new_users: i64,
+    pub active_users: i64,
+    pub total_orders: i64,
+    pub total_revenue: i64,
+}
+
+impl DailyStat {
+    pub fn revenue_usd(&self) -> f64 {
+        self.total_revenue as f64 / 100.0
+    }
+}
+
+#[derive(Template)]
+#[template(path = "admin/stats.html")]
+pub struct AnalyticsTemplate {
+    pub stats: Vec<DailyStat>,
+    pub stats_rev: Vec<DailyStat>,
+    pub today_new_users: i64,
+    pub today_active_users: i64,
+    pub today_orders: i64,
+    pub today_revenue: String,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
 pub struct OrderWithUser {
     pub id: i64,
     pub username: String,
@@ -124,6 +163,14 @@ pub struct SaveSettingsForm {
     pub support_url: Option<String>,
     pub brand_name: Option<String>,
     pub terms_of_service: Option<String>,
+    pub decoy_enabled: Option<String>, // Checkbox sends "on" or nothing
+    pub decoy_urls: Option<String>,
+    pub decoy_min_interval: Option<String>,
+    pub decoy_max_interval: Option<String>,
+    
+    // Kill Switch
+    pub kill_switch_enabled: Option<String>,
+    pub kill_switch_timeout: Option<String>,
 }
 
 pub async fn get_login() -> impl IntoResponse {
@@ -139,11 +186,74 @@ pub async fn get_login() -> impl IntoResponse {
     Html(template.render().unwrap_or_default())
 }
 
+
+pub async fn analytics(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    // Ensure leading slash
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    // Fetch last 30 days of stats
+    // We order by date DESC to get latest first
+    let stats = sqlx::query_as::<_, DailyStat>(
+        "SELECT date, new_users, active_users, total_orders, total_revenue FROM daily_stats ORDER BY date DESC LIMIT 30"
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    // Today's stats (first in list if date matches today, but simplified: just take first if exists)
+    // Ideally we check if date == today, but for UI "Today" usually means "Latest available" or 0 if empty.
+    let today_stat = stats.first();
+    
+    // Check if the latest stat is actually from today. If not, show 0.
+    let today_str = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let is_today = today_stat.map(|s| s.date == today_str).unwrap_or(false);
+
+    let (t_new, t_active, t_orders, t_rev) = if is_today {
+        let s = today_stat.unwrap();
+        (s.new_users, s.active_users, s.total_orders, s.total_revenue)
+    } else {
+        (0, 0, 0, 0)
+    };
+
+    // For Chart, we need Ascending order (oldest to newest)
+    let mut stats_rev = stats.clone();
+    stats_rev.reverse();
+
+    let template = AnalyticsTemplate {
+        stats,
+        stats_rev,
+        today_new_users: t_new,
+        today_active_users: t_active,
+        today_orders: t_orders,
+        today_revenue: format!("{:.2}", t_rev as f64 / 100.0),
+        is_auth: true,
+        admin_path,
+        active_page: "analytics".to_string(),
+    };
+
+    Html(template.render().unwrap_or_else(|e| {
+        error!("Template render error: {}", e);
+        "Error rendering analytics".to_string()
+    }))
+}
+
 pub async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
     Form(form): Form<LoginForm>,
 ) -> impl IntoResponse {
+    // Rate Limit: 5 attempts per minute per username
+    let rate_key = format!("rate:login:{}", form.username);
+    if let Ok(allowed) = state.redis.check_rate_limit(&rate_key, 5, 60).await {
+        if !allowed {
+             tracing::warn!("Login rate limit exceeded for user: {}", form.username);
+             return (axum::http::StatusCode::TOO_MANY_REQUESTS, "Too many login attempts. Please wait.").into_response();
+        }
+    }
+
     let admin_res = sqlx::query("SELECT password_hash FROM admins WHERE username = ?")
         .bind(&form.username)
         .fetch_optional(&state.pool)
@@ -155,7 +265,15 @@ pub async fn login(
             let hash: String = row.get(0);
             if bcrypt::verify(&form.password, &hash).unwrap_or(false) {
                 let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
-                let cookie = Cookie::build(("admin_session", state.session_secret.clone()))
+                
+                // Generate random session token
+                let token = uuid::Uuid::new_v4().to_string();
+                
+                // Store in Redis (24h TTL)
+                let redis_key = format!("session:{}", token);
+                let _ = state.redis.set(&redis_key, "admin", 86400).await;
+
+                let cookie = Cookie::build(("admin_session", token))
                     .path("/")
                     .http_only(true)
                     .build();
@@ -194,6 +312,10 @@ pub async fn activate_node(
     match res {
         Ok(_) => {
             let _ = crate::services::activity_service::ActivityService::log(&state.pool, "Node", &format!("Node {} activated", id)).await;
+            
+            // Notify Node (PubSub)
+            let _ = state.pubsub.publish(&format!("node_events:{}", id), "update").await;
+
             let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
             ([("HX-Redirect", &format!("{}/nodes", admin_path))], "Activated").into_response()
         },
@@ -204,8 +326,19 @@ pub async fn activate_node(
     }
 }
 
-pub async fn logout(jar: CookieJar) -> impl IntoResponse {
+pub async fn logout(
+    State(state): State<AppState>,
+    jar: CookieJar
+) -> impl IntoResponse {
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    
+    // Invalidate in Redis if exists
+    if let Some(cookie) = jar.get("admin_session") {
+        let token = cookie.value();
+        let redis_key = format!("session:{}", token);
+        let _ = state.redis.del(&redis_key).await;
+    }
+
     let cookie = Cookie::build(("admin_session", ""))
         .path("/")
         // expire immediately
@@ -272,6 +405,178 @@ pub async fn get_dashboard(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+// --- Traffic Analytics ---
+
+#[derive(serde::Serialize)]
+pub struct ChartUser {
+    pub username: Option<String>,
+    pub total_traffic_fmt: String,
+}
+
+#[derive(Template)]
+#[template(path = "analytics.html")]
+pub struct TrafficAnalyticsTemplate {
+    pub total_traffic_30d: String,
+    pub active_nodes_count: i64,
+    pub top_users: Vec<ChartUser>,
+    
+    // Chart Data (JSON strings)
+    pub history_labels_json: String,
+    pub history_data_json: String,
+    pub node_labels_json: String,
+    pub node_series_json: String,
+
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+pub async fn get_traffic_analytics(State(state): State<AppState>) -> impl IntoResponse {
+    use crate::services::analytics_service::AnalyticsService;
+    
+    // 1. Fetch Data concurrently
+    let (history, top_users, node_stats) = tokio::join!(
+        AnalyticsService::get_traffic_history(&state.pool),
+        AnalyticsService::get_top_users(&state.pool),
+        AnalyticsService::get_node_traffic_stats(&state.pool)
+    );
+
+    let history = history.unwrap_or_default();
+    let top_users = top_users.unwrap_or_default();
+    let node_stats = node_stats.unwrap_or_default();
+
+    // 2. Process History (Area Chart)
+    // History comes DESC (newest first). Need ASC for chart.
+    let mut history_asc = history;
+    history_asc.reverse();
+
+    let history_labels: Vec<String> = history_asc.iter().map(|d| d.date.clone()).collect();
+    let history_data: Vec<f64> = history_asc.iter().map(|d| d.traffic_used as f64 / 1024.0 / 1024.0 / 1024.0).collect(); // GB
+
+    let total_traffic_bytes: i64 = history_asc.iter().map(|d| d.traffic_used).sum();
+    let total_traffic_30d = format!("{:.2} GB", total_traffic_bytes as f64 / 1024.0 / 1024.0 / 1024.0);
+
+    // 3. Process Node Stats (Donut Chart)
+    let node_labels: Vec<String> = node_stats.iter().map(|n| n.name.clone()).collect();
+    let node_series: Vec<f64> = node_stats.iter().map(|n| n.total_traffic as f64 / 1024.0 / 1024.0 / 1024.0).collect(); // GB
+    let active_nodes_count = node_stats.len() as i64;
+
+    // 4. Process Top Users (Table)
+    let formatted_top_users: Vec<ChartUser> = top_users.into_iter().map(|u| ChartUser {
+        username: u.username,
+        total_traffic_fmt: format!("{:.2} GB", u.total_traffic as f64 / 1024.0 / 1024.0 / 1024.0),
+    }).collect();
+
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    let template = TrafficAnalyticsTemplate {
+        total_traffic_30d,
+        active_nodes_count,
+        top_users: formatted_top_users,
+        
+        history_labels_json: serde_json::to_string(&history_labels).unwrap_or("[]".to_string()),
+        history_data_json: serde_json::to_string(&history_data).unwrap_or("[]".to_string()),
+        node_labels_json: serde_json::to_string(&node_labels).unwrap_or("[]".to_string()),
+        node_series_json: serde_json::to_string(&node_series).unwrap_or("[]".to_string()),
+
+        is_auth: true,
+        admin_path,
+        active_page: "analytics".to_string(),
+    };
+
+    match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
+    }
+}
+
+// --- Traffic Analytics ---
+
+#[derive(serde::Serialize)]
+pub struct ChartUser {
+    pub username: Option<String>,
+    pub total_traffic_fmt: String,
+}
+
+#[derive(Template)]
+#[template(path = "analytics.html")]
+pub struct TrafficAnalyticsTemplate {
+    pub total_traffic_30d: String,
+    pub active_nodes_count: i64,
+    pub top_users: Vec<ChartUser>,
+    
+    // Chart Data (JSON strings)
+    pub history_labels_json: String,
+    pub history_data_json: String,
+    pub node_labels_json: String,
+    pub node_series_json: String,
+
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+pub async fn get_traffic_analytics(State(state): State<AppState>) -> impl IntoResponse {
+    use crate::services::analytics_service::AnalyticsService;
+    
+    // 1. Fetch Data concurrently
+    let (history, top_users, node_stats) = tokio::join!(
+        AnalyticsService::get_traffic_history(&state.pool),
+        AnalyticsService::get_top_users(&state.pool),
+        AnalyticsService::get_node_traffic_stats(&state.pool)
+    );
+
+    let history = history.unwrap_or_default();
+    let top_users = top_users.unwrap_or_default();
+    let node_stats = node_stats.unwrap_or_default();
+
+    // 2. Process History (Area Chart)
+    // History comes DESC (newest first). Need ASC for chart.
+    let mut history_asc = history;
+    history_asc.reverse();
+
+    let history_labels: Vec<String> = history_asc.iter().map(|d| d.date.clone()).collect();
+    let history_data: Vec<f64> = history_asc.iter().map(|d| d.traffic_used as f64 / 1024.0 / 1024.0 / 1024.0).collect(); // GB
+
+    let total_traffic_bytes: i64 = history_asc.iter().map(|d| d.traffic_used).sum();
+    let total_traffic_30d = format!("{:.2} GB", total_traffic_bytes as f64 / 1024.0 / 1024.0 / 1024.0);
+
+    // 3. Process Node Stats (Donut Chart)
+    let node_labels: Vec<String> = node_stats.iter().map(|n| n.name.clone()).collect();
+    let node_series: Vec<f64> = node_stats.iter().map(|n| n.total_traffic as f64 / 1024.0 / 1024.0 / 1024.0).collect(); // GB
+    let active_nodes_count = node_stats.len() as i64;
+
+    // 4. Process Top Users (Table)
+    let formatted_top_users: Vec<ChartUser> = top_users.into_iter().map(|u| ChartUser {
+        username: u.username,
+        total_traffic_fmt: format!("{:.2} GB", u.total_traffic as f64 / 1024.0 / 1024.0 / 1024.0),
+    }).collect();
+
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    let template = TrafficAnalyticsTemplate {
+        total_traffic_30d,
+        active_nodes_count,
+        top_users: formatted_top_users,
+        
+        history_labels_json: serde_json::to_string(&history_labels).unwrap_or("[]".to_string()),
+        history_data_json: serde_json::to_string(&history_data).unwrap_or("[]".to_string()),
+        node_labels_json: serde_json::to_string(&node_labels).unwrap_or("[]".to_string()),
+        node_series_json: serde_json::to_string(&node_series).unwrap_or("[]".to_string()),
+
+        is_auth: true,
+        admin_path,
+        active_page: "analytics".to_string(),
+    };
+
+    match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
+    }
+}
+
 #[derive(Deserialize)]
 pub struct InstallNodeForm {
     pub name: String,
@@ -283,7 +588,14 @@ pub struct InstallNodeForm {
 #[derive(Deserialize)]
 pub struct UpdateNodeForm {
     pub name: String,
+    pub name: String,
     pub ip: String,
+    
+    // Bandwidth Shaping checkboxes
+    pub config_qos_enabled: Option<String>,
+    pub config_block_torrent: Option<String>,
+    pub config_block_ads: Option<String>,
+    pub config_block_porn: Option<String>,
 }
 
 #[derive(Template)]
@@ -316,6 +628,16 @@ pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
     let support_url = state.settings.get_or_default("support_url", "").await;
     let brand_name = state.settings.get_or_default("brand_name", "EXA ROBOT").await;
     let terms_of_service = state.settings.get_or_default("terms_of_service", "Welcome to EXA ROBOT.").await;
+    
+    // Fetch Decoy Settings
+    let decoy_enabled = state.settings.get_or_default("decoy_enabled", "false").await == "true";
+    let decoy_urls = state.settings.get_or_default("decoy_urls", "[\"https://www.google.com\", \"https://www.azure.com\", \"https://www.netflix.com\"]").await;
+    let decoy_min_interval = state.settings.get_or_default("decoy_min_interval", "60").await;
+    let decoy_max_interval = state.settings.get_or_default("decoy_max_interval", "600").await;
+
+    // Fetch Kill Switch Settings
+    let kill_switch_enabled = state.settings.get_or_default("kill_switch_enabled", "false").await == "true";
+    let kill_switch_timeout = state.settings.get_or_default("kill_switch_timeout", "300").await; // Default 5 mins
 
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| {
         tracing::warn!("ADMIN_PATH env var not found in get_settings handler! Defaulting to /admin");
@@ -338,8 +660,87 @@ pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
         is_auth: true,
         admin_path: std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string()),
         active_page: "settings".to_string(),
+        
+        decoy_enabled,
+        decoy_urls,
+        decoy_min_interval,
+        decoy_max_interval,
+
+        kill_switch_enabled,
+        kill_switch_timeout,
     };
     
+    match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
+    }
+}
+
+// --- System Logs ---
+
+#[derive(Deserialize)]
+pub struct LogsFilter {
+    pub category: Option<String>,
+    pub page: Option<i64>,
+}
+
+#[derive(Template)]
+#[template(path = "logs.html")]
+pub struct SystemLogsTemplate {
+    pub logs: Vec<crate::services::logging_service::LogEntry>,
+    pub categories: Vec<String>,
+    pub current_category: String,
+    pub current_page: i64,
+    pub has_next: bool,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+pub async fn get_system_logs_page(
+    State(state): State<AppState>,
+    axum::extract::Query(filter): axum::extract::Query<LogsFilter>,
+) -> impl IntoResponse {
+    use crate::services::logging_service::LoggingService;
+    
+    let page = filter.page.unwrap_or(1);
+    let limit = 50;
+    let offset = (page - 1) * limit;
+    
+    let category = filter.category.unwrap_or_default();
+    
+    // Fetch logs
+    let logs = LoggingService::get_logs(&state.pool, limit + 1, offset, Some(category.clone()))
+        .await
+        .unwrap_or_default();
+        
+    // Check pagination
+    let has_next = logs.len() > limit as usize;
+    let logs = if has_next {
+        logs.into_iter().take(limit as usize).collect()
+    } else {
+        logs
+    };
+
+    // Fetch categories for filter
+    let categories = LoggingService::get_categories(&state.pool)
+        .await
+        .unwrap_or_default();
+
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    let template = SystemLogsTemplate {
+        logs,
+        categories,
+        current_category: category,
+        current_page: page,
+        has_next,
+        is_auth: true,
+        admin_path,
+        active_page: "system_logs".to_string(),
+    };
+
     match template.render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
@@ -391,8 +792,46 @@ pub async fn save_settings(
     if let Some(v) = form.brand_name { settings.insert("brand_name".to_string(), v); }
     if let Some(v) = form.terms_of_service { settings.insert("terms_of_service".to_string(), v); }
 
+    // Decoy Settings
+    // Checkbox: if present (usually "on"), it's enabled. If absent (None), it's disabled.
+    // However, since it's an Option in the form, if it's None, it means the browser didn't send it (unchecked).
+    // BUT, we need to be careful: if the field is missing purely because the form structure changed, we might accidentally disable it.
+    // Standard HTML form behavior: unchecked checkboxes are NOT sent.
+    // So if we receive the form submission at all, we should assume missing = disabled.
+    // We can infer this is a settings update.
+    let decoy_enabled = form.decoy_enabled.is_some(); 
+    settings.insert("decoy_enabled".to_string(), decoy_enabled.to_string());
+
+    if let Some(v) = form.decoy_urls { settings.insert("decoy_urls".to_string(), v); }
+    if let Some(v) = form.decoy_min_interval { settings.insert("decoy_min_interval".to_string(), v); }
+    if let Some(v) = form.decoy_max_interval { settings.insert("decoy_max_interval".to_string(), v); }
+
+    // Kill Switch Settings
+    let kill_switch_enabled = form.kill_switch_enabled.is_some();
+    settings.insert("kill_switch_enabled".to_string(), kill_switch_enabled.to_string());
+    
+    if let Some(v) = form.kill_switch_timeout { settings.insert("kill_switch_timeout".to_string(), v); }
+
     match state.settings.set_multiple(settings).await {
         Ok(_) => {
+             // Notify ALL nodes about settings change
+             // We can use a wildcard channel or iterate used nodes.
+             // Ideally we publish to "global_settings_update" channel if we had one.
+             // But existing agents listen to "node_events:{id}".
+             // For now, let's rely on polling (1m-10m) for settings, OR we can iterate active nodes and notify.
+             // Iterating active nodes is safer for now.
+             let active_nodes: Vec<i64> = sqlx::query_scalar("SELECT id FROM nodes WHERE status = 'active'")
+                 .fetch_all(&state.pool)
+                 .await
+                 .unwrap_or_default();
+             
+             let pubsub = state.pubsub.clone();
+             tokio::spawn(async move {
+                 for node_id in active_nodes {
+                     let _ = pubsub.publish(&format!("node_events:{}", node_id), "settings_update").await;
+                 }
+             });
+
              // Basic toast notification via HX-Trigger could be added here
              ([("HX-Refresh", "true")], "Settings Saved").into_response()
         },
@@ -494,7 +933,11 @@ pub async fn install_node(
             let id: i64 = row.get(0);
             
             // Just register in node manager (sets status to 'new' explicitly)
-            state.node_manager.add_node(id).await;
+            // Set status to 'new' (was handled by node_manager)
+            let _ = sqlx::query("UPDATE nodes SET status = 'new' WHERE id = ?")
+                .bind(id)
+                .execute(&state.pool)
+                .await;
             
             // Initialize default inbounds (Reality Keys, etc.)
             // We spawn this to not block the redirect, or await it? 
@@ -596,6 +1039,8 @@ pub async fn sync_node(
         info!("Manual sync triggered for node: {}", id);
     
     let orch = state.orchestration_service.clone();
+    let pubsub = state.pubsub.clone();
+
     tokio::spawn(async move {
         // Delete existing inbounds to force regeneration with fresh keys
         if let Err(e) = sqlx::query("DELETE FROM inbounds WHERE node_id = ?")
@@ -613,6 +1058,11 @@ pub async fn sync_node(
             error!("Failed to recreate inbounds for node {}: {}", id, e);
         } else {
             info!("Successfully regenerated inbounds with fresh keys for node {}", id);
+            
+            // Notify Agent
+            if let Err(e) = pubsub.publish(&format!("node_events:{}", id), "update").await {
+                error!("Failed to publish update event: {}", e);
+            }
         }
     });
 
@@ -1444,10 +1894,11 @@ pub async fn extend_user_subscription(
 
 pub async fn handle_payment(
     State(state): State<AppState>,
+    Path(source): Path<String>,
     body: String,
 ) -> impl IntoResponse {
-    info!("Received payment webhook");
-    if let Err(e) = state.pay_service.handle_webhook(&body).await {
+    info!("Received payment webhook from source: {}", source);
+    if let Err(e) = state.pay_service.handle_webhook(&source, &body).await {
         error!("Failed to process payment webhook: {}", e);
         return axum::http::StatusCode::INTERNAL_SERVER_ERROR;
     }
@@ -1705,4 +2156,174 @@ fn format_duration(dur: chrono::Duration) -> String {
 
 fn is_authenticated(jar: &CookieJar) -> bool {
     jar.get("admin_session").is_some()
+}
+// Frontends UI Handler
+#[derive(Template)]
+#[template(path = "frontends.html")]
+pub struct FrontendsTemplate {
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+pub async fn get_frontends(State(_state): State<AppState>) -> impl IntoResponse {
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    let template = FrontendsTemplate {
+        is_auth: true,
+        admin_path,
+        active_page: "frontends".to_string(),
+    };
+
+    match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
+    }
+}
+
+// ========== Tools Page - DB Export and Trial Configuration ==========
+
+#[derive(Template)]
+#[template(path = "tools.html")]
+pub struct ToolsTemplate {
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+    pub last_export: Option<String>,
+    pub free_trial_days: i64,
+    pub channel_trial_days: i64,
+    pub required_channel_id: String,
+    pub trial_stats: Option<TrialStats>,
+}
+
+pub struct TrialStats {
+    pub default_count: i64,
+    pub channel_count: i64,
+    pub active_count: i64,
+}
+
+pub async fn get_tools_page(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    // Get current config from environment
+    let free_trial_days = std::env::var("FREE_TRIAL_DAYS")
+        .unwrap_or_else(|_| "3".to_string())
+        .parse()
+        .unwrap_or(3);
+    
+    let channel_trial_days = std::env::var("CHANNEL_TRIAL_DAYS")
+        .unwrap_or_else(|_| "7".to_string())
+        .parse()
+        .unwrap_or(7);
+    
+    let required_channel_id = std::env::var("REQUIRED_CHANNEL_ID")
+        .unwrap_or_default();
+    
+    // Get trial statistics from database
+    let trial_stats = get_trial_stats(&state.pool).await.ok();
+    
+    let admin_path = std::env::var("ADMIN_PATH")
+        .unwrap_or_else(|_| "/admin".to_string());
+    
+    let tmpl = ToolsTemplate {
+        is_auth: true,
+        admin_path,
+        active_page: "tools".to_string(),
+        last_export: None, // TODO: Track last export timestamp
+        free_trial_days,
+        channel_trial_days,
+        required_channel_id,
+        trial_stats,
+    };
+    
+    Html(tmpl.render().unwrap())
+}
+
+pub async fn db_export_download(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    use axum::http::{header, StatusCode};
+    
+    info!("Admin requested database export");
+    
+    match state.export_service.create_export().await {
+        Ok(data) => {
+            let filename = format!(
+                "exarobot_backup_{}.tar.gz",
+                chrono::Utc::now().format("%Y%m%d_%H%M%S")
+            );
+            
+            info!("Export successful: {} bytes, filename: {}", data.len(), filename);
+            
+            (
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, "application/gzip"),
+                    (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", filename)),
+                ],
+                data
+            ).into_response()
+        }
+        Err(e) => {
+            error!("Database export failed: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Export failed. Check server logs for details."
+            ).into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct TrialConfigForm {
+    pub free_trial_days: i64,
+    pub channel_trial_days: i64,
+    pub required_channel_id: String,
+}
+
+pub async fn update_trial_config(
+    State(_state): State<AppState>,
+    Form(form): Form<TrialConfigForm>,
+) -> impl IntoResponse {
+    use axum::response::Redirect;
+    
+    info!(
+        "Trial configuration update requested: default={}, channel={}, channel_id={}",
+        form.free_trial_days,
+        form.channel_trial_days,
+        form.required_channel_id
+    );
+    
+    // NOTE: These settings are currently read from .env
+    // To persist changes, would need to:
+    // 1. Store in database settings table
+    // 2. Or dynamically update .env file
+    // For now, just redirect back with the current values
+    
+    // TODO: Implement persistent storage for trial configuration
+    
+    let admin_path = std::env::var("ADMIN_PATH")
+        .unwrap_or_else(|_| "/admin".to_string());
+    
+    Redirect::to(&format!("{}/tools", admin_path))
+}
+
+async fn get_trial_stats(pool: &sqlx::SqlitePool) -> anyhow::Result<TrialStats> {
+    let result = sqlx::query_as::<_, (Option<i64>, Option<i64>, Option<i64>)>(
+        "SELECT 
+            SUM(CASE WHEN trial_source = 'default' THEN 1 ELSE 0 END) as default_count,
+            SUM(CASE WHEN trial_source = 'channel' THEN 1 ELSE 0 END) as channel_count,
+            SUM(CASE WHEN trial_expires_at > datetime('now') THEN 1 ELSE 0 END) as active_count
+         FROM users
+         WHERE trial_expires_at IS NOT NULL"
+    )
+    .fetch_one(pool)
+    .await?;
+    
+    Ok(TrialStats {
+        default_count: result.0.unwrap_or(0),
+        channel_count: result.1.unwrap_or(0),
+        active_count: result.2.unwrap_or(0),
+    })
 }

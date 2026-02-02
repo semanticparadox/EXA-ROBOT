@@ -1,5 +1,5 @@
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, ParseMode, CallbackQuery, ChatId};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, ParseMode, CallbackQuery, ChatId, LabeledPrice};
 use tracing::{info, error};
 use crate::AppState;
 use crate::bot::utils::escape_md;
@@ -119,9 +119,11 @@ pub async fn callback_handler(
             "topup_menu" => {
                 let response = "💳 *Choose Top-up Method:*";
                 let buttons = vec![
-                    vec![InlineKeyboardButton::callback("🪙 CryptoBot", "pay_cryptobot")],
-                    vec![InlineKeyboardButton::callback("🔥 NOWPayments (Crypto)", "pay_nowpayments")],
-                    vec![InlineKeyboardButton::callback("⭐ Telegram Stars", "pay_stars")],
+                    vec![InlineKeyboardButton::callback("💎 CryptoBot", "pay_cryptobot")],
+                    vec![InlineKeyboardButton::callback("🔥 NOWPayments", "pay_nowpayments")],
+                    vec![InlineKeyboardButton::callback("🇷🇺 Cards (CrystalPay)", "pay_crystal")],
+                    vec![InlineKeyboardButton::callback("💳 Stripe (Card)", "pay_stripe")],
+                    vec![InlineKeyboardButton::callback("⭐️ Telegram Stars", "pay_stars")],
                 ];
                 if let Some(msg) = q.message {
                     let _ = bot.edit_message_text(msg.chat().id, msg.id(), response)
@@ -130,34 +132,143 @@ pub async fn callback_handler(
                         .await;
                 }
             }
-            
+
+            // Amount Selection Menus
             "pay_cryptobot" => {
-                // Ask for amount via buttons or just fixed amounts for now
-                let buttons = vec![
-                    vec![InlineKeyboardButton::callback("$5", "cb_5"), InlineKeyboardButton::callback("$10", "cb_10")],
-                    vec![InlineKeyboardButton::callback("$20", "cb_20"), InlineKeyboardButton::callback("$50", "cb_50")],
-                    vec![InlineKeyboardButton::callback("« Back", "topup_menu")],
-                ];
+                let buttons = make_amount_keyboard("cb");
                 if let Some(msg) = q.message {
-                    let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🔹 *Select amount for CryptoBot:*").parse_mode(ParseMode::MarkdownV2).reply_markup(InlineKeyboardMarkup::new(buttons)).await;
+                    let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🔹 *Select amount for CryptoBot:*")
+                        .parse_mode(ParseMode::MarkdownV2).reply_markup(buttons).await;
+                }
+            }
+            "pay_nowpayments" => {
+                let buttons = make_amount_keyboard("np");
+                if let Some(msg) = q.message {
+                    let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🔹 *Select amount for NOWPayments:*")
+                        .parse_mode(ParseMode::MarkdownV2).reply_markup(buttons).await;
+                }
+            }
+            "pay_crystal" => {
+                let buttons = make_amount_keyboard("cp");
+                if let Some(msg) = q.message {
+                    let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🔹 *Select amount for CrystalPay (Cards/SBP):*")
+                        .parse_mode(ParseMode::MarkdownV2).reply_markup(buttons).await;
+                }
+            }
+            "pay_stripe" => {
+                let buttons = make_amount_keyboard("str");
+                if let Some(msg) = q.message {
+                    let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🔹 *Select amount for Stripe:*")
+                        .parse_mode(ParseMode::MarkdownV2).reply_markup(buttons).await;
+                }
+            }
+            "pay_stars" => {
+                let buttons = make_amount_keyboard("star");
+                if let Some(msg) = q.message {
+                    let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🔹 *Select amount via Stars:*")
+                        .parse_mode(ParseMode::MarkdownV2).reply_markup(buttons).await;
                 }
             }
 
+            // Handlers
             cb if cb.starts_with("cb_") => {
-                let amount = cb.strip_prefix("cb_").unwrap().parse::<f64>().unwrap_or(0.0);
+                let amount = cb.strip_prefix("cb_").unwrap_or("0").parse::<f64>().unwrap_or(0.0);
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 if let Some(u) = user_db {
                     match state.pay_service.create_cryptobot_invoice(u.id, amount, PaymentType::BalanceTopup).await {
                         Ok(url) => {
-                            let buttons = vec![vec![InlineKeyboardButton::url("🔗 Pay with CryptoBot", url.parse().unwrap())]];
-                            let _ = bot.answer_callback_query(q.id).await;
-                            if let Some(msg) = q.message {
-                                let _ = bot.send_message(msg.chat().id, format!("💳 Invoice for *${:.2}* created\\!", amount)).parse_mode(ParseMode::MarkdownV2).reply_markup(InlineKeyboardMarkup::new(buttons)).await;
-                            }
+                             let buttons = vec![vec![InlineKeyboardButton::url("🔗 Pay with CryptoBot", url.parse().unwrap())]];
+                             let _ = bot.answer_callback_query(q.id).await;
+                             if let Some(msg) = q.message {
+                                 let _ = bot.send_message(msg.chat().id, format!("💳 Invoice for *${:.2}* created\\!", amount)).parse_mode(ParseMode::MarkdownV2).reply_markup(InlineKeyboardMarkup::new(buttons)).await;
+                             }
                         }
                         Err(e) => {
-                            let _ = bot.answer_callback_query(q.id).text(format!("Error: {}", e)).show_alert(true).await;
+                             let _ = bot.answer_callback_query(q.id).text(format!("Error: {}", e)).show_alert(true).await;
                         }
+                    }
+                }
+            }
+            np if np.starts_with("np_") => {
+                let amount = np.strip_prefix("np_").unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                if let Some(u) = user_db {
+                    match state.pay_service.create_nowpayments_invoice(u.id, amount, PaymentType::BalanceTopup).await {
+                        Ok(url) => {
+                             let buttons = vec![vec![InlineKeyboardButton::url("🔗 Pay with NOWPayments", url.parse().unwrap())]];
+                             let _ = bot.answer_callback_query(q.id).await;
+                             if let Some(msg) = q.message {
+                                 let _ = bot.send_message(msg.chat().id, format!("💳 Invoice for *${:.2}* created\\!", amount)).parse_mode(ParseMode::MarkdownV2).reply_markup(InlineKeyboardMarkup::new(buttons)).await;
+                             }
+                        }
+                        Err(e) => {
+                             let _ = bot.answer_callback_query(q.id).text(format!("Error: {}", e)).show_alert(true).await;
+                        }
+                    }
+                }
+            }
+            cp if cp.starts_with("cp_") => {
+                let amount = cp.strip_prefix("cp_").unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                if let Some(u) = user_db {
+                    match state.pay_service.create_crystalpay_invoice(u.id, amount, PaymentType::BalanceTopup).await {
+                        Ok(url) => {
+                             let buttons = vec![vec![InlineKeyboardButton::url("🔗 Pay with Card (CrystalPay)", url.parse().unwrap())]];
+                             let _ = bot.answer_callback_query(q.id).await;
+                             if let Some(msg) = q.message {
+                                 let _ = bot.send_message(msg.chat().id, format!("💳 Invoice for *${:.2}* created\\!", amount)).parse_mode(ParseMode::MarkdownV2).reply_markup(InlineKeyboardMarkup::new(buttons)).await;
+                             }
+                        }
+                        Err(e) => {
+                             let _ = bot.answer_callback_query(q.id).text(format!("Error: {}", e)).show_alert(true).await;
+                        }
+                    }
+                }
+            }
+            str_pay if str_pay.starts_with("str_") => {
+                let amount = str_pay.strip_prefix("str_").unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                if let Some(u) = user_db {
+                    match state.pay_service.create_stripe_session(u.id, amount, PaymentType::BalanceTopup).await {
+                        Ok(url) => {
+                             let buttons = vec![vec![InlineKeyboardButton::url("🔗 Pay with Stripe", url.parse().unwrap())]];
+                             let _ = bot.answer_callback_query(q.id).await;
+                             if let Some(msg) = q.message {
+                                 let _ = bot.send_message(msg.chat().id, format!("💳 Invoice for *${:.2}* created\\!", amount)).parse_mode(ParseMode::MarkdownV2).reply_markup(InlineKeyboardMarkup::new(buttons)).await;
+                             }
+                        }
+                        Err(e) => {
+                             let _ = bot.answer_callback_query(q.id).text(format!("Error: {}", e)).show_alert(true).await;
+                        }
+                    }
+                }
+            }
+            
+            star if star.starts_with("star_") => {
+                let amount_usd = star.strip_prefix("star_").unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                // 1 USD approx 50 XTR (Telegram Stars). Rate varies.
+                // Official: 1 XTR ~ $0.02 USD (purchase cost for user usually higher).
+                // Let's charge 50 XTR per $1 USD balance.
+                let xtr_amount = (amount_usd * 50.0) as u32; 
+                
+                let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                if let Some(u) = user_db {
+                    let payload = PaymentType::BalanceTopup.to_payload_string(u.id);
+                    let prices = vec![LabeledPrice { label: "Top-up".to_string(), amount: xtr_amount as u32 }];
+                    
+                    if let Some(msg) = q.message {
+                        // Delete menu message
+                        let _ = bot.delete_message(msg.chat().id, msg.id()).await;
+                        
+                        let _ = bot.send_invoice(
+                            msg.chat().id,
+                            "Balance Top-up",
+                            format!("Top-up balance by ${}", amount_usd),
+                            payload,
+                            "", // Provider token empty for XTR
+                            "XTR",
+                            prices
+                        ).await;
                     }
                 }
             }
@@ -194,7 +305,32 @@ pub async fn callback_handler(
                             }
                         }
                     }
-                    let _ = bot.answer_callback_query(q.id.clone()).await;
+            }
+            
+            get_config if get_config.starts_with("get_config_") => {
+                let _sub_id = get_config.strip_prefix("get_config_").unwrap_or("0");
+                let _ = bot.answer_callback_query(q.id.clone()).text("Generating profile...").await;
+                
+                let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                if let Some(u) = user_db {
+                    match state.store_service.generate_subscription_file(u.id).await {
+                        Ok(json_content) => {
+                            let data = json_content.into_bytes();
+                            let input_file = teloxide::types::InputFile::memory(data).file_name("exarobot_v2_profile.json");
+                            
+                            if let Some(msg) = q.message {
+                                let _ = bot.send_document(msg.chat().id, input_file)
+                                    .caption("📂 <b>Your EXA-ROBOT Profile</b>\n\nImport this file into Sing-box, Nekobox, or Hiddify.\nIt contains automatic server selection and failover.")
+                                    .parse_mode(ParseMode::Html)
+                                    .await;
+                            }
+                        }
+                        Err(e) => {
+                             error!("Failed to generate config: {}", e);
+                             let _ = bot.send_message(ChatId(tg_id), "❌ Failed to generate profile file.").await;
+                        }
+                    }
+                }
             }
 
             activate if activate.starts_with("activate_") => {
@@ -312,64 +448,59 @@ pub async fn callback_handler(
                 }
             }
 
-            buy_page if buy_page.starts_with("buy_page_") => {
-                let page = buy_page.strip_prefix("buy_page_").unwrap_or("0").parse::<usize>().unwrap_or(0);
+            buy_plan_idx if buy_plan_idx.starts_with("buy_plan_idx_") => {
+                let index = buy_plan_idx.strip_prefix("buy_plan_idx_").unwrap_or("0").parse::<usize>().unwrap_or(0);
                 let plans = state.store_service.get_active_plans().await.unwrap_or_default();
                 
                 if plans.is_empty() {
                     let _ = bot.answer_callback_query(q.id).text("❌ No active plans available.").await;
                 } else {
                     let _ = bot.answer_callback_query(q.id).await;
-                    let chat_id = q.message.map(|m| m.chat().id).unwrap_or(ChatId(0));
-                    if chat_id.0 == 0 { return Ok(()); }
+                    let total_plans = plans.len();
+                    // Safety check
+                    let index = if index >= total_plans { 0 } else { index };
+                    let plan = &plans[index];
 
-                    let limit = 3;
-                    let total_pages = (plans.len() as f64 / limit as f64).ceil() as usize;
-                    let page = if page >= total_pages { 0 } else { page };
-                    let start = page * limit;
-                    let end = std::cmp::min(start + limit, plans.len());
-                    let page_plans = &plans[start..end];
+                    let mut text = format!("💎 *{}* \\({}/{}\\)\n\n", escape_md(&plan.name), index + 1, total_plans);
+                    if let Some(desc) = &plan.description {
+                        text.push_str(&format!("_{}_\n", escape_md(desc)));
+                    }
 
-                    let _ = bot.send_message(chat_id, format!("💎 *Showcase:* Page {}/{}", page + 1, total_pages)).parse_mode(ParseMode::MarkdownV2).await;
+                    let mut buttons = Vec::new();
+                    
+                    // Duration Buttons
+                    let mut duration_row = Vec::new();
+                    for dur in &plan.durations {
+                        let price_major = dur.price / 100;
+                        let price_minor = dur.price % 100;
+                        let label = if dur.duration_days == 0 {
+                            format!("🚀 Traffic Plan - ${}.{:02}", price_major, price_minor)
+                        } else {
+                            format!("{}d - ${}.{:02}", dur.duration_days, price_major, price_minor)
+                        };
+                        duration_row.push(InlineKeyboardButton::callback(
+                            label,
+                            format!("buy_dur_{}", dur.id)
+                        ));
+                    }
+                     if !duration_row.is_empty() {
+                         buttons.push(duration_row);
+                    }
 
-                    for (i, plan) in page_plans.iter().enumerate() {
-                        let mut text = format!("💎 *{}*\n\n", escape_md(&plan.name));
-                        if let Some(desc) = &plan.description {
-                            text.push_str(&format!("_{}_\n", escape_md(desc)));
-                        }
+                    // Navigation
+                    if total_plans > 1 {
+                        let mut nav_row = Vec::new();
+                        let next_idx = if index + 1 < total_plans { index + 1 } else { 0 };
+                        let prev_idx = if index > 0 { index - 1 } else { total_plans - 1 };
+                        
+                        nav_row.push(InlineKeyboardButton::callback("⬅️", format!("buy_plan_idx_{}", prev_idx)));
+                        nav_row.push(InlineKeyboardButton::callback(format!("{}/{}", index + 1, total_plans), "noop"));
+                        nav_row.push(InlineKeyboardButton::callback("➡️", format!("buy_plan_idx_{}", next_idx)));
+                        buttons.push(nav_row);
+                    }
 
-                        let mut buttons = Vec::new();
-                        let mut duration_row = Vec::new();
-                        for dur in &plan.durations {
-                            let price_major = dur.price / 100;
-                            let price_minor = dur.price % 100;
-                            let label = if dur.duration_days == 0 {
-                                format!("🚀 Traffic Plan - ${}.{:02}", price_major, price_minor)
-                            } else {
-                                format!("{}d - ${}.{:02}", dur.duration_days, price_major, price_minor)
-                            };
-                            duration_row.push(InlineKeyboardButton::callback(
-                                label,
-                                format!("buy_dur_{}", dur.id)
-                            ));
-                        }
-                        buttons.push(duration_row);
-
-                        let is_last_in_batch = i == (page_plans.len() - 1);
-                        if is_last_in_batch && total_pages > 1 {
-                            let mut nav_row = Vec::new();
-                            if page > 0 {
-                                nav_row.push(InlineKeyboardButton::callback("⬅️ Back", format!("buy_page_{}", page - 1)));
-                            }
-                            if page + 1 < total_pages {
-                                nav_row.push(InlineKeyboardButton::callback("Next ➡️", format!("buy_page_{}", page + 1)));
-                            }
-                            if !nav_row.is_empty() {
-                                buttons.push(nav_row);
-                            }
-                        }
-
-                        let _ = bot.send_message(chat_id, text)
+                    if let Some(msg) = q.message {
+                        let _ = bot.edit_message_text(msg.chat().id, msg.id(), text)
                             .parse_mode(ParseMode::MarkdownV2)
                             .reply_markup(InlineKeyboardMarkup::new(buttons))
                             .await;
@@ -438,7 +569,8 @@ pub async fn callback_handler(
                             // Action Buttons
                             if sub.sub.status == "active" {
                                 buttons.push(vec![
-                                    InlineKeyboardButton::callback("🔗 Get Config", format!("get_links_{}", sub.sub.id)),
+                                    InlineKeyboardButton::callback("🔗 Get Links", format!("get_links_{}", sub.sub.id)),
+                                    InlineKeyboardButton::callback("📄 JSON Profile", format!("get_config_{}", sub.sub.id)),
                                     InlineKeyboardButton::callback("⏳ Extend", format!("extend_sub_{}", sub.sub.id))
                                 ]);
                             } else if sub.sub.status == "pending" {
@@ -604,14 +736,20 @@ pub async fn callback_handler(
                                         escape_md(product.description.as_deref().unwrap_or("No description")), 
                                         price
                                     );
-                                    let buttons = vec![vec![InlineKeyboardButton::callback(format!("💳 Buy for ${:.2}", price), format!("buyprod_{}", product.id))]];
+                                    let buttons = vec![
+                                        vec![InlineKeyboardButton::callback(format!("💳 Buy Now (${:.2})", price), format!("buyprod_{}", product.id))],
+                                        vec![InlineKeyboardButton::callback("🛒 Add to Cart", format!("add_cart_prod_{}", product.id))]
+                                    ];
                                     let _ = bot.send_message(chat_id, text)
                                         .parse_mode(ParseMode::MarkdownV2)
                                         .reply_markup(InlineKeyboardMarkup::new(buttons))
                                         .await;
                                 }
-                                // Add back button in a small separate message
-                                let nav = vec![vec![InlineKeyboardButton::callback("🔙 Back to Categories", "store_home")]];
+                                // Add back button and cart button
+                                let nav = vec![
+                                    vec![InlineKeyboardButton::callback("🔙 Back to Categories", "store_home")],
+                                    vec![InlineKeyboardButton::callback("🛒 View Cart", "view_cart")]
+                                ];
                                 let _ = bot.send_message(chat_id, "---")
                                     .reply_markup(InlineKeyboardMarkup::new(nav))
                                     .await;
@@ -629,7 +767,8 @@ pub async fn callback_handler(
                                 );
                                 
                                 let buttons = vec![
-                                    vec![InlineKeyboardButton::callback(format!("💳 Buy for ${:.2}", price), format!("buyprod_{}", product.id))],
+                                    vec![InlineKeyboardButton::callback(format!("💳 Buy Now (${:.2})", price), format!("buyprod_{}", product.id))],
+                                    vec![InlineKeyboardButton::callback("🛒 Add to Cart", format!("add_cart_prod_{}", product.id))],
                                     vec![InlineKeyboardButton::callback("🔙 Back", format!("store_cat_{}", product.category_id.unwrap_or(0)))],
                                 ];
                                 
@@ -647,6 +786,9 @@ pub async fn callback_handler(
                         for cat in categories {
                             buttons.push(vec![InlineKeyboardButton::callback(cat.name, format!("store_cat_{}", cat.id))]);
                         }
+                        // View Cart
+                        buttons.push(vec![InlineKeyboardButton::callback("🛒 View Cart", "view_cart")]);
+
                         let kb = InlineKeyboardMarkup::new(buttons);
                         let _ = bot.edit_message_text(chat_id, q.message.unwrap().id(), "📦 *Digital Store Categories:*")
                             .parse_mode(ParseMode::MarkdownV2)
@@ -655,7 +797,100 @@ pub async fn callback_handler(
                 }
             }
 
-            "edit_ref_code" => {
+            // Cart Actions
+            "view_cart" => {
+                 let _ = bot.answer_callback_query(q.id.clone()).await;
+                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 if let Some(user) = user_db {
+                     let cart_items = state.store_service.get_user_cart(user.id).await.unwrap_or_default();
+                     
+                     let text = if cart_items.is_empty() {
+                         "🛒 Your cart is empty.".to_string()
+                     } else {
+                         let mut total_price: i64 = 0;
+                         let mut t = "🛒 *YOUR SHOPPING CART*\n\n".to_string();
+                         
+                         for (prod, qty, _) in &cart_items {
+                             let price_major = prod.price / 100;
+                             let price_minor = prod.price % 100;
+                             t.push_str(&format!("• *{}* \\(x{}\\) - ${}.{:02}\n", escape_md(&prod.name), qty, price_major, price_minor));
+                             total_price += prod.price * (*qty as i64);
+                         }
+
+                         let total_major = total_price / 100;
+                         let total_minor = total_price % 100;
+                         t.push_str(&format!("\n💰 *TOTAL: ${}.{:02}*", total_major, total_minor));
+                         t
+                     };
+
+                     let buttons = if cart_items.is_empty() {
+                         vec![vec![InlineKeyboardButton::callback("📦 Return to Store", "store_home")]]
+                     } else {
+                         vec![
+                             vec![InlineKeyboardButton::callback("✅ Checkout", "cart_checkout")],
+                             vec![InlineKeyboardButton::callback("🗑️ Clear Cart", "cart_clear")],
+                             vec![InlineKeyboardButton::callback("📦 Continue Shopping", "store_home")]
+                         ]
+                     };
+                     
+                     if let Some(msg) = q.message {
+                         let _ = bot.send_message(msg.chat().id, text)
+                            .parse_mode(ParseMode::MarkdownV2)
+                            .reply_markup(InlineKeyboardMarkup::new(buttons))
+                            .await;
+                     }
+                 }
+            }
+
+            "cart_clear" => {
+                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 if let Some(user) = user_db {
+                     let _ = state.store_service.clear_cart(user.id).await;
+                     let _ = bot.answer_callback_query(q.id).text("🗑️ Cart cleared").await;
+                     if let Some(msg) = q.message {
+                         let _ = bot.edit_message_text(msg.chat().id, msg.id(), "🛒 Your cart is empty.")
+                             .reply_markup(InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback("📦 Return to Store", "store_home")]]))
+                             .await;
+                     }
+                 }
+            }
+
+            "cart_checkout" => {
+                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 if let Some(user) = user_db {
+                     match state.store_service.checkout_cart(user.id).await {
+                         Ok(notes) => {
+                             let _ = bot.answer_callback_query(q.id).text("✅ Checkout successful!").await;
+                             let mut response = "✅ *Order Processed Successfully\\!*\n\n".to_string();
+                             for note in notes {
+                                 response.push_str(&format!("{}\n", escape_md(&note)));
+                             }
+                             if let Some(msg) = q.message {
+                                 let _ = bot.send_message(msg.chat().id, response).parse_mode(ParseMode::MarkdownV2).await;
+                                 let _ = bot.delete_message(msg.chat().id, msg.id()).await; // Delete cart msg
+                             }
+                         },
+                         Err(e) => {
+                             let _ = bot.answer_callback_query(q.id).text(format!("❌ Failed: {}", e)).show_alert(true).await;
+                         }
+                     }
+                 }
+            }
+
+            add_cart if add_cart.starts_with("add_cart_prod_") => {
+                 let prod_id = add_cart.strip_prefix("add_cart_prod_").unwrap().parse::<i64>().unwrap_or(0);
+                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 if let Some(user) = user_db {
+                     match state.store_service.add_to_cart(user.id, prod_id, 1).await {
+                         Ok(_) => {
+                             let _ = bot.answer_callback_query(q.id).text("🛒 Added to cart!").await;
+                         },
+                         Err(e) => {
+                             let _ = bot.answer_callback_query(q.id).text(format!("❌ Error: {}", e)).await;
+                         }
+                     }
+                 }
+            }
                 let _ = bot.answer_callback_query(q.id).await;
                 if let Some(msg) = q.message {
                     let text = "🔗 *EDIT REFERRAL ALIAS*\n\n\
@@ -689,10 +924,113 @@ pub async fn callback_handler(
                 }
             }
 
+            // === Quick Wins: Auto-Renewal Toggle ===
+            toggle if toggle.starts_with("toggle_renew_") => {
+                let sub_id: i64 = toggle.strip_prefix("toggle_renew_").and_then(|s| s.parse().ok()).unwrap_or(0);
+                let _ = bot.answer_callback_query(q.id.clone()).await;
+                
+                match state.store_service.toggle_auto_renewal(sub_id).await {
+                    Ok(new_state) => {
+                        let status_text = if new_state {
+                            "✅ *Auto\\-Renewal Enabled*\n\nYour subscription will automatically renew 24h before expiration if you have sufficient balance\\."
+                        } else {
+                            "🔴 *Auto\\-Renewal Disabled*\n\nYou'll need to manually renew your subscription when it expires\\."
+                        };
+                        
+                        if let Some(msg) = q.message {
+                            let _ = bot.send_message(msg.chat().id, status_text)
+                                .parse_mode(ParseMode::MarkdownV2)
+                                .await;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to toggle auto-renewal: {}", e);
+                        if let Some(msg) = q.message {
+                            let _ = bot.send_message(msg.chat().id, "❌ Failed to update setting\\. Please try again\\.")
+                                .parse_mode(ParseMode::MarkdownV2)
+                                .await;
+                        }
+                    }
+                }
+            }
+
+            // === Quick Wins: Free Trial Activation ===
+            "start_trial" => {
+                let _ = bot.answer_callback_query(q.id.clone()).await;
+                
+                if let Some(user) = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten() {
+                    if user.trial_used.unwrap_or(false) {
+                        let _ = bot.answer_callback_query(q.id)
+                            .text("❌ Free trial already used")
+                            .show_alert(true)
+                            .await;
+                        return Ok(());
+                    }
+                    
+                    match (state.store_service.get_trial_plan().await, state.store_service.mark_trial_used(user.id).await) {
+                        (Ok(trial_plan), Ok(_)) => {
+                            match state.store_service.create_trial_subscription(user.id, trial_plan.id).await {
+                                Ok(sub_id) => {
+                                    if let Some(msg) = q.message {
+                                        let _ = bot.delete_message(msg.chat().id, msg.id()).await;
+                                        
+                                        let trial_msg = format!(
+                                            "🎁 <b>Free Trial Activated!</b>\n\n\
+                                             ⏰ Duration: 24 hours\n\
+                                             📊 Traffic: 10GB\n\
+                                             🔐 Protocols: VLESS, HY2, AmneziaWG\n\n\
+                                             Use /sub to view your subscription link!"
+                                        );
+                                        
+                                        let _ = bot.send_message(msg.chat().id, trial_msg)
+                                            .parse_mode(ParseMode::Html)
+                                            .await;
+                                        
+                                        info!("Trial subscription {} created for user {}", sub_id, user.id);
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to create trial subscription: {}", e);
+                                    if let Some(msg) = q.message {
+                                        let _ = bot.send_message(msg.chat().id, "❌ Failed to activate trial\\. Please contact support\\.")
+                                            .parse_mode(ParseMode::MarkdownV2)
+                                            .await;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            error!("Failed to get trial plan or mark trial used");
+                            if let Some(msg) = q.message {
+                                let _ = bot.send_message(msg.chat().id, "❌ Trial not available at the moment\\.")
+                                    .parse_mode(ParseMode::MarkdownV2)
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
+
             _ => {
                 let _ = bot.answer_callback_query(q.id).text("Feature not yet implemented.").await;
             }
         }
     }
     Ok::<_, teloxide::RequestError>(())
+}
+
+fn make_amount_keyboard(prefix: &str) -> InlineKeyboardMarkup {
+    let amounts = vec![5, 10, 20, 50];
+    let mut buttons = Vec::new();
+    
+    // 2x2 grid
+    for chunk in amounts.chunks(2) {
+        let mut row = Vec::new();
+        for &amt in chunk {
+             row.push(InlineKeyboardButton::callback(format!("${}", amt), format!("{}_{}", prefix, amt)));
+        }
+        buttons.push(row);
+    }
+    buttons.push(vec![InlineKeyboardButton::callback("« Back", "topup_menu")]);
+    InlineKeyboardMarkup::new(buttons)
 }

@@ -12,6 +12,22 @@ pub async fn message_handler(
 ) -> Result<(), teloxide::RequestError> {
     info!("Received message: {:?}", msg.text());
     let tg_id = msg.chat.id.0 as i64;
+
+    if let Some(payment) = msg.successful_payment() {
+         let amount_xtr = payment.total_amount as f64;
+         // 1 USD approx 50 XTR
+         let amount_usd = amount_xtr / 50.0;
+         info!("Processing Stars Payment: {} XTR (${:.2})", amount_xtr, amount_usd);
+         
+         match state.pay_service.process_any_payment(amount_usd, "stars", Some(payment.provider_payment_charge_id.clone()), &payment.invoice_payload).await {
+             Ok(_) => { let _ = bot.send_message(msg.chat.id, "✅ Payment successful! Balance updated.").await; },
+             Err(e) => { 
+                 error!("Stars payment processing failed: {}", e);
+                 let _ = bot.send_message(msg.chat.id, "❌ Error processing payment. Please contact support.").await; 
+             }
+         }
+         return Ok(());
+    }
     
     if let Some(text) = msg.text() {
         // 1. Resolve User (Handle /start upsert or fetch existing)
@@ -106,6 +122,19 @@ pub async fn message_handler(
                     .reply_markup(main_menu())
                     .await
                     .map_err(|e| error!("Failed to send welcome on /start: {}", e));
+
+                // Set persistent menu button
+                let web_app_url = state.settings.get_or_default("mini_app_url", "").await;
+                if !web_app_url.is_empty() {
+                    let _ = bot.set_chat_menu_button()
+                        .chat_id(msg.chat.id)
+                        .menu_button(teloxide::types::MenuButton::WebApp { 
+                            text: "🚀 Open App".to_string(), 
+                            web_app: teloxide::types::WebAppInfo { url: web_app_url.parse().unwrap() } 
+                        })
+                        .await;
+                }
+                
                 return Ok(());
             }
         } else if !text.starts_with("/start") {
@@ -120,8 +149,7 @@ pub async fn message_handler(
                     info!("Processing reply to message with text: [{}]", reply_text);
                     info!("User reply body: [{}]", text);
                     // Note Update
-                if reply_text.contains("with your note for Subscription #") {
-                        if let Some(start_idx) = reply_text.find('#') {
+                if let Some(start_idx) = reply_text.find('#') {
                             let id_part = &reply_text[start_idx + 1..];
                             let id_str = id_part.trim_end_matches('.'); 
                             if let Ok(sub_id) = id_str.parse::<i64>() {
@@ -130,7 +158,152 @@ pub async fn message_handler(
                                 return Ok(());
                             }
                         }
-                }
+                // Transfer
+                    if reply_text.contains("Transfer Subscription") && reply_text.contains("Subscription #") {
+                        if let Some(start) = reply_text.find("Subscription #") {
+                        let rest = &reply_text[start + "Subscription #".len()..];
+                        let id_str = rest.split_whitespace().next().unwrap_or("0");
+                        if let Ok(sub_id) = id_str.parse::<i64>() {
+                            if let Some(u) = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten() {
+                                match state.store_service.transfer_subscription(sub_id, u.id, text).await {
+                                    Ok(_) => { let _ = bot.send_message(msg.chat.id, format!("✅ Subscription \\#{} transferred to {} successfully\\!", sub_id, escape_md(text))).parse_mode(ParseMode::MarkdownV2).await; }
+                                    Err(e) => { let _ = bot.send_message(msg.chat.id, format!("❌ Transfer failed: {}", escape_md(&e.to_string()))).parse_mode(ParseMode::MarkdownV2).await; }
+                                }
+                            }
+                            return Ok(());
+                        }
+                        }
+                    }
+
+                    // Gift Code
+                    if reply_text.contains("🎟 Enter your Gift Code") || reply_text.contains("🎟 Enter your Promo Code") {
+                        let code = text.trim();
+                        if let Some(u) = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten() {
+                            if code.starts_with("EXA-GIFT-") {
+                                match state.store_service.redeem_gift_code(u.id, code).await {
+                                    Ok(_sub) => { let _ = bot.send_message(msg.chat.id, "✅ *Code Redeemed\\!*\n\nCheck *My Services*\\.").parse_mode(ParseMode::MarkdownV2).await; },
+                                    Err(e) => { let _ = bot.send_message(msg.chat.id, format!("❌ Redemption Failed: {}", escape_md(&e.to_string()))).parse_mode(ParseMode::MarkdownV2).await; }
+                                }
+                            } else {
+                                let _ = bot.send_message(msg.chat.id, "❌ Invalid code format\\.").parse_mode(ParseMode::MarkdownV2).await;
+                            }
+                        }
+                        return Ok(());
+                    }
+
+                    // Edit Referral Code Alias
+                    if reply_text.contains("EDIT REFERRAL ALIAS") {
+                        let new_code = text.trim();
+                        
+                        // Basic validation
+                        if new_code.len() < 3 || new_code.len() > 32 {
+                            let _ = bot.send_message(msg.chat.id, "❌ *Invalid Length*\n\nReferral alias must be between 3 and 32 characters\\.").parse_mode(ParseMode::MarkdownV2).await;
+                            return Ok(());
+                        }
+
+                        if !new_code.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            let _ = bot.send_message(msg.chat.id, "❌ *Invalid Characters*\n\nReferral alias can only contain letters, numbers, and underscores\\.").parse_mode(ParseMode::MarkdownV2).await;
+                            return Ok(());
+                        }
+
+                        if let Some(u) = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten() {
+                            match state.store_service.update_user_referral_code(u.id, new_code).await {
+                                Ok(_) => { 
+                                    let bot_me = bot.get_me().await.ok();
+                                    let bot_username = bot_me.and_then(|m| m.username.clone()).unwrap_or_else(|| "bot".to_string());
+                                    let new_link = format!("https://t.me/{}?start={}", bot_username, new_code);
+                                    
+                                    let response = format!(
+                                        "✅ *Referral Alias Updated\\!*\n\n\
+                                        Your new data:\n\
+                                        Code: `{}`\n\
+                                        Link: `{}`", 
+                                        new_code.replace("`", "\\`").replace("\\", "\\\\"),
+                                        new_link.replace("`", "\\`").replace("\\", "\\\\")
+                                    );
+                                    if let Err(e) = bot.send_message(msg.chat.id, response).parse_mode(ParseMode::MarkdownV2).await {
+                                        error!("Failed to send alias update confirmation: {}", e);
+                                    }
+                                },
+                                Err(_e) => { 
+                                    let _ = bot.send_message(msg.chat.id, "❌ *Update Failed*\n\nThis alias might already be taken or invalid\\.").parse_mode(ParseMode::MarkdownV2).await; 
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+
+                    // Enter Referrer Code
+                    if reply_text.contains("Enter Referrer Code") {
+                         let ref_code = text.trim();
+                         if let Some(u) = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten() {
+                             match state.store_service.set_user_referrer(u.id, ref_code).await {
+                                 Ok(_) => { let _ = bot.send_message(msg.chat.id, "✅ *Referrer Linked\\!*\n\nYou've successfully set your referrer\\.").parse_mode(ParseMode::MarkdownV2).await; },
+                                 Err(e) => { let _ = bot.send_message(msg.chat.id, format!("❌ Linking Failed: {}", escape_md(&e.to_string()))).parse_mode(ParseMode::MarkdownV2).await; }
+                             }
+                         }
+                         return Ok(());
+                    }
+            }
+        }
+
+        // Admin Commands
+        if text.starts_with("/admin") {
+            // Verify Admin
+            let is_admin: bool = sqlx::query_scalar("SELECT COUNT(*) FROM admins WHERE tg_id = ?")
+                .bind(tg_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0) > 0;
+
+            if !is_admin {
+                // Silent ignore or "Unknown command"
+                return Ok(());
+            }
+
+            if text.starts_with("/admin sni") {
+                 let parts: Vec<&str> = text.split_whitespace().collect();
+                 if parts.len() > 2 && parts[2] == "logs" {
+                     // /admin sni logs
+                     let logs: Vec<(String, String, String, String, String)> = sqlx::query_as(
+                         "SELECT n.name, l.old_sni, l.new_sni, l.reason, l.rotated_at 
+                          FROM sni_rotation_log l
+                          JOIN nodes n ON l.node_id = n.id
+                          ORDER BY l.rotated_at DESC LIMIT 10"
+                     )
+                     .fetch_all(&state.pool)
+                     .await
+                     .unwrap_or_default();
+
+                     if logs.is_empty() {
+                         let _ = bot.send_message(msg.chat.id, "📜 No SNI rotations found.").await;
+                     } else {
+                         let mut response = "📜 <b>Recent SNI Rotations</b>\n\n".to_string();
+                         for (node, old, new, reason, time) in logs {
+                             response.push_str(&format!("🔄 <b>{}</b> (Node: {})\n", time, node));
+                             response.push_str(&format!("   {} → {}\n", old, new));
+                             response.push_str(&format!("   Reason: {}\n\n", reason));
+                         }
+                         let _ = bot.send_message(msg.chat.id, response).parse_mode(ParseMode::Html).await;
+                     }
+                 } else {
+                     // /admin sni (Status)
+                     let pool: Vec<(String, i32, i32)> = sqlx::query_as("SELECT domain, tier, health_score FROM sni_pool ORDER BY tier ASC, health_score DESC")
+                         .fetch_all(&state.pool)
+                         .await
+                         .unwrap_or_default();
+                     
+                     let mut response = "📊 <b>SNI Pool Status</b>\n\n".to_string();
+                     for (domain, tier, score) in pool {
+                         let icon = if score > 80 { "✅" } else if score > 50 { "⚠️" } else { "❌" };
+                         response.push_str(&format!("{} <b>{}</b> (T{}, Score: {})\n", icon, domain, tier, score));
+                     }
+                     
+                     let _ = bot.send_message(msg.chat.id, response).parse_mode(ParseMode::Html).await;
+                 }
+                 return Ok(());
+            }
+        }
                 // Transfer
                     if reply_text.contains("Transfer Subscription") && reply_text.contains("Subscription #") {
                         if let Some(start) = reply_text.find("Subscription #") {
@@ -223,6 +396,7 @@ pub async fn message_handler(
         match text {
             // /start is already handled above in flow
             "📦 Digital Store" => {
+                    let _ = bot.delete_message(msg.chat.id, msg.id).await;
                     let categories = state.store_service.get_categories().await.unwrap_or_default();
                     if categories.is_empty() {
                         let _ = bot.send_message(msg.chat.id, "❌ The store is currently empty.").await;
@@ -231,12 +405,51 @@ pub async fn message_handler(
                         for cat in categories {
                             buttons.push(vec![InlineKeyboardButton::callback(cat.name, format!("store_cat_{}", cat.id))]);
                         }
+                        
+                        // Add "View Cart" button to store menu
+                        buttons.push(vec![InlineKeyboardButton::callback("🛒 View Cart", "view_cart")]);
+
                         let kb = InlineKeyboardMarkup::new(buttons);
                         let _ = bot.send_message(msg.chat.id, "📦 *Welcome to the Digital Store*\\nSelect a category to browse:")
                         .parse_mode(ParseMode::MarkdownV2)
                         .reply_markup(kb)
                         .await;
                     }
+            }
+            "🛒 My Cart" | "/cart" => {
+                 let _ = bot.delete_message(msg.chat.id, msg.id).await;
+                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 if let Some(user) = user_db {
+                     let cart_items = state.store_service.get_user_cart(user.id).await.unwrap_or_default();
+                     
+                     if cart_items.is_empty() {
+                         let _ = bot.send_message(msg.chat.id, "🛒 Your cart is empty.").await;
+                     } else {
+                         let mut total_price: i64 = 0;
+                         let mut text = "🛒 *YOUR SHOPPING CART*\n\n".to_string();
+                         
+                         for (prod, _, _) in &cart_items {
+                             let price_major = prod.price / 100;
+                             let price_minor = prod.price % 100;
+                             text.push_str(&format!("• *{}* - ${}.{:02}\n", escape_md(&prod.name), price_major, price_minor));
+                             total_price += prod.price;
+                         }
+
+                         let total_major = total_price / 100;
+                         let total_minor = total_price % 100;
+                         text.push_str(&format!("\n💰 *TOTAL: ${}.{:02}*", total_major, total_minor));
+
+                         let buttons = vec![
+                             vec![InlineKeyboardButton::callback("✅ Checkout", "cart_checkout")],
+                             vec![InlineKeyboardButton::callback("🗑️ Clear Cart", "cart_clear")]
+                         ];
+                         
+                         let _ = bot.send_message(msg.chat.id, text)
+                            .parse_mode(ParseMode::MarkdownV2)
+                            .reply_markup(InlineKeyboardMarkup::new(buttons))
+                            .await;
+                     }
+                 }
             }
             "/enter_promo" | "🎁 Redeem Code" => {
                 let _ = bot.send_message(msg.chat.id, "🎟 *Redeem Gift Code*\n\nPlease reply to this message with your code (e.g., `EXA-GIFT-XYZ`).")
@@ -246,67 +459,63 @@ pub async fn message_handler(
             }
 
             "🛍 Buy Subscription" | "/plans" => {
+                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let plans = state.store_service.get_active_plans().await.unwrap_or_default();
                 
                 if plans.is_empty() {
                     let _ = bot.send_message(msg.chat.id, "❌ No active plans available at the moment.").await;
                 } else {
-                    let page = 0;
-                    let limit = 3;
-                    let total_pages = (plans.len() as f64 / limit as f64).ceil() as usize;
-                    let start = page * limit;
-                    let end = std::cmp::min(start + limit, plans.len());
-                    let page_plans = &plans[start..end];
+                    let total_plans = plans.len();
+                    let index = 0;
+                    let plan = &plans[index];
 
-                    let _ = bot.send_message(msg.chat.id, format!("💎 *Showcase:* Page {}/{}", page + 1, total_pages)).parse_mode(ParseMode::MarkdownV2).await;
-
-                    for (i, plan) in page_plans.iter().enumerate() {
-                        let mut text = format!("💎 *{}*\n\n", escape_md(&plan.name));
-                        if let Some(desc) = &plan.description {
-                            text.push_str(&format!("_{}_\n", escape_md(desc)));
-                        }
-
-                        let mut buttons = Vec::new();
-                        let mut duration_row = Vec::new();
-                        for dur in &plan.durations {
-                            let price_major = dur.price / 100;
-                            let price_minor = dur.price % 100;
-                            let label = if dur.duration_days == 0 {
-                                format!("🚀 Traffic Plan - ${}.{:02}", price_major, price_minor)
-                            } else {
-                                format!("{}d - ${}.{:02}", dur.duration_days, price_major, price_minor)
-                            };
-                            duration_row.push(InlineKeyboardButton::callback(
-                                label,
-                                format!("buy_dur_{}", dur.id)
-                            ));
-                        }
-                        buttons.push(duration_row);
-
-                        // If it's the last plan on the last page or just the last plan of the batch, we add navigation if needed
-                        let is_last_in_batch = i == (page_plans.len() - 1);
-                        if is_last_in_batch && total_pages > 1 {
-                            let mut nav_row = Vec::new();
-                            if page > 0 {
-                                nav_row.push(InlineKeyboardButton::callback("⬅️ Back", format!("buy_page_{}", page - 1)));
-                            }
-                            if page + 1 < total_pages {
-                                nav_row.push(InlineKeyboardButton::callback("Next ➡️", format!("buy_page_{}", page + 1)));
-                            }
-                            if !nav_row.is_empty() {
-                                buttons.push(nav_row);
-                            }
-                        }
-
-                        let _ = bot.send_message(msg.chat.id, text)
-                            .parse_mode(ParseMode::MarkdownV2)
-                            .reply_markup(InlineKeyboardMarkup::new(buttons))
-                            .await;
+                    let mut text = format!("💎 *{}* \\({}/{}\\)\n\n", escape_md(&plan.name), index + 1, total_plans);
+                    if let Some(desc) = &plan.description {
+                        text.push_str(&format!("_{}_\n", escape_md(desc)));
                     }
+
+                    let mut buttons = Vec::new();
+                    
+                    // Duration Buttons
+                    let mut duration_row = Vec::new();
+                    for dur in &plan.durations {
+                        let price_major = dur.price / 100;
+                        let price_minor = dur.price % 100;
+                        let label = if dur.duration_days == 0 {
+                            format!("🚀 Traffic Plan - ${}.{:02}", price_major, price_minor)
+                        } else {
+                            format!("{}d - ${}.{:02}", dur.duration_days, price_major, price_minor)
+                        };
+                        duration_row.push(InlineKeyboardButton::callback(
+                            label,
+                            format!("buy_dur_{}", dur.id)
+                        ));
+                    }
+                    if !duration_row.is_empty() {
+                         buttons.push(duration_row);
+                    }
+
+                    // Navigation
+                    if total_plans > 1 {
+                        let mut nav_row = Vec::new();
+                        let next_idx = if index + 1 < total_plans { index + 1 } else { 0 };
+                        let prev_idx = if index > 0 { index - 1 } else { total_plans - 1 };
+                        
+                        nav_row.push(InlineKeyboardButton::callback("⬅️", format!("buy_plan_idx_{}", prev_idx)));
+                        nav_row.push(InlineKeyboardButton::callback(format!("{}/{}", index + 1, total_plans), "noop"));
+                        nav_row.push(InlineKeyboardButton::callback("➡️", format!("buy_plan_idx_{}", next_idx)));
+                        buttons.push(nav_row);
+                    }
+
+                    let _ = bot.send_message(msg.chat.id, text)
+                        .parse_mode(ParseMode::MarkdownV2)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await;
                 }
             }
 
             "👤 My Profile" | "/profile" => {
+                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 
                 if let Some(user) = user_db {
@@ -332,6 +541,7 @@ pub async fn message_handler(
             }
 
             "🔐 My Services" | "/services" => {
+                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 
                 if let Some(user) = user_db {
@@ -455,6 +665,7 @@ pub async fn message_handler(
             }
 
             "🎁 Bonuses / Referral" | "/referral" => {
+                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 if let Some(user) = user_db {
                     let bot_me = bot.get_me().await.ok();
@@ -503,6 +714,7 @@ pub async fn message_handler(
             }
 
             "❓ Support" => {
+                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let support_username = state.settings.get_or_default("support_url", "").await;
                 
                 if support_username.is_empty() {
@@ -519,6 +731,28 @@ pub async fn message_handler(
                     let _ = bot.send_message(msg.chat.id, "Need help? Click the button below to contact support:")
                         .reply_markup(kb)
                         .await;
+                }
+            }
+
+            "/leaderboard" | "🏆 Leaderboard" => {
+                // Delete command message to keep chat clean
+                let _ = bot.delete_message(msg.chat.id, msg.id).await;
+                use crate::services::referral_service::ReferralService;
+
+                let leaderboard = ReferralService::get_leaderboard(&state.pool, 10).await.unwrap_or_default();
+                
+                if leaderboard.is_empty() {
+                     let _ = bot.send_message(msg.chat.id, "🏆 *Leaderboard is empty*").parse_mode(ParseMode::MarkdownV2).await;
+                } else {
+                    let mut text = "🏆 *Top Referrers*\n\n".to_string();
+                    for entry in leaderboard {
+                        let medal = entry.medal.unwrap_or_else(|| "👤".to_string());
+                        // Escape username to avoid MarkdownV2 errors
+                        text.push_str(&format!("{} *{}* \\- {} refs\n", medal, escape_md(&entry.username), entry.referral_count));
+                    }
+                    text.push_str("\n_Invite friends to climb the ranks\\!_");
+                    
+                    let _ = bot.send_message(msg.chat.id, text).parse_mode(ParseMode::MarkdownV2).await;
                 }
             }
 

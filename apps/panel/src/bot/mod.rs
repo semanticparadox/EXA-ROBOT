@@ -34,8 +34,12 @@ pub async fn run_bot(bot: Bot, mut shutdown_signal: tokio::sync::broadcast::Rece
 
     let handler = Update::filter_message().endpoint(handlers::command::message_handler);
     let callback_handler = Update::filter_callback_query().endpoint(handlers::callback::callback_handler);
+    let pre_checkout_handler = Update::filter_pre_checkout_query().endpoint(handlers::payment::pre_checkout_handler);
 
-    let mut dispatcher = Dispatcher::builder(bot, dptree::entry().branch(handler).branch(callback_handler))
+    let mut dispatcher = Dispatcher::builder(bot, dptree::entry()
+        .branch(handler)
+        .branch(callback_handler)
+        .branch(pre_checkout_handler))
         .dependencies(dptree::deps![state])
         .default_handler(|upd: std::sync::Arc<Update>| async move {
             info!("Unhandled update: {:?}", upd);

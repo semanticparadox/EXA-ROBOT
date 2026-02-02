@@ -1,0 +1,118 @@
+.servers-page {
+    padding-bottom: 40px;
+}
+
+.test-section {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.test-button {
+    padding: 14px 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.hint {
+    font-size: 13px;
+    color: var(--tg-theme-hint-color, #999);
+}
+
+.servers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.server-card {
+    background: var(--tg-theme-secondary-bg-color, #fff);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    position: relative;
+    transition: transform 0.2s;
+}
+
+.server-card:active {
+    transform: scale(0.98);
+}
+
+.server-card.best {
+    border: 2px solid #667eea;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+}
+
+.server-flag {
+    font-size: 32px;
+    min-width: 40px;
+}
+
+.server-info {
+    flex: 1;
+}
+
+.server-name {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.server-country {
+    font-size: 13px;
+    color: var(--tg-theme-hint-color, #999);
+}
+
+.server-stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.latency {
+    font-weight: 600;
+    font-size: 14px;
+    color: #667eea;
+    padding: 4px 8px;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 6px;
+}
+
+.status {
+    font-size: 18px;
+}
+
+.best-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.info-box {
+    background: rgba(102, 126, 234, 0.1);
+    border-left: 4px solid #667eea;
+    border-radius: 8px;
+    padding: 16px;
+    color: var(--tg-theme-text-color, #000);
+}
+
+.info-box p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}

@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 members = ["apps/agent",
-    "apps/panel", "libs/shared",
+    "apps/panel", "libs/shared", 
+    "apps/frontend",
 ]
 
 [profile.release]

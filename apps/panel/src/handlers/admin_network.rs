@@ -131,6 +131,9 @@ pub async fn add_inbound(
 
     match res {
         Ok(_) => {
+            // PubSub Notify
+            let _ = state.pubsub.publish(&format!("node_events:{}", node_id), "update").await;
+
             // Redirect back to the list
              let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
              let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
@@ -155,7 +158,11 @@ pub async fn delete_inbound(
         .execute(&state.pool)
         .await 
     {
-        Ok(_) => axum::http::StatusCode::OK.into_response(),
+        Ok(_) => {
+            // PubSub Notify
+            let _ = state.pubsub.publish(&format!("node_events:{}", node_id), "update").await;
+            axum::http::StatusCode::OK.into_response()
+        },
         Err(e) => {
              error!("Failed to delete inbound: {}", e);
              (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete").into_response()
@@ -449,6 +456,9 @@ pub async fn update_inbound(
 
     match res {
         Ok(_) => {
+            // PubSub Notify
+            let _ = state.pubsub.publish(&format!("node_events:{}", node_id), "update").await;
+
             let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
             let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
             ([("HX-Redirect", format!("{}/nodes/{}/inbounds", admin_path, node_id))], "Updated").into_response()

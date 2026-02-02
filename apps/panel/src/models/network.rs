@@ -38,7 +38,34 @@ pub enum InboundType {
     Vless(VlessSettings),
     Hysteria2(Hysteria2Settings),
     Trojan(TrojanSettings),
-    // Add others as needed
+    #[serde(rename = "amneziawg")]
+    AmneziaWg(AmneziaWgSettings),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AmneziaWgSettings {
+    pub users: Vec<AmneziaWgUser>,
+    pub private_key: String,
+    pub listen_port: u16,
+    // Obfuscation parameters
+    pub jc: u16,
+    pub jmin: u16,
+    pub jmax: u16,
+    pub s1: u16,
+    pub s2: u16,
+    pub h1: u32,
+    pub h2: u32,
+    pub h3: u32,
+    pub h4: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AmneziaWgUser {
+    pub name: String,
+    pub private_key: String, // Client's private key (usually we generate it)
+    pub public_key: String,
+    pub preshared_key: Option<String>,
+    pub client_ip: String, // e.g. 10.10.0.2/32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

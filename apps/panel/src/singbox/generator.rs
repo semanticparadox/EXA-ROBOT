@@ -6,8 +6,9 @@ pub struct ConfigGenerator;
 
 impl ConfigGenerator {
     /// Generates a complete Sing-box configuration from a list of database Inbounds
+    /// Generates a complete Sing-box configuration from a list of database Inbounds
     pub fn generate_config(
-        _node_ip: &str, // Used for logging or binding checks if needed
+        node: &crate::models::node::Node,
         inbounds: Vec<crate::models::network::Inbound>,
     ) -> SingBoxConfig {
         
@@ -163,7 +164,54 @@ impl ConfigGenerator {
             outbounds: vec![
                 Outbound::Direct { tag: "direct".to_string() }
             ],
-            route: None, // No routing rules needed - traffic goes direct by default via first outbound
+            ],
+            route: Some(RouteConfig {
+                rules: {
+                    let mut rules = Vec::new();
+                    
+                    // 1. Block BitTorrent
+                    if node.config_block_torrent {
+                        rules.push(RouteRule {
+                            action: Some("reject".to_string()),
+                            protocol: Some(vec!["bittorrent".to_string()]),
+                            outbound: None, port: None, domain: None, geosite: None, geoip: None,
+                        });
+                    }
+
+                    // 2. Block Ads
+                    if node.config_block_ads {
+                        rules.push(RouteRule {
+                            action: Some("reject".to_string()),
+                            geosite: Some(vec!["category-ads-all".to_string()]),
+                            outbound: None, protocol: None, port: None, domain: None, geoip: None,
+                        });
+                    }
+
+                    // 3. Block Porn
+                    if node.config_block_porn {
+                        rules.push(RouteRule {
+                            action: Some("reject".to_string()),
+                            geosite: Some(vec!["category-porn".to_string()]),
+                            outbound: None, protocol: None, port: None, domain: None, geoip: None,
+                        });
+                    }
+
+                    // 4. QoS (Prioritize UDP/QUIC)
+                    if node.config_qos_enabled {
+                        rules.push(RouteRule {
+                            action: Some("route".to_string()),
+                            protocol: Some(vec!["stun".to_string(), "quic".to_string(), "dtls".to_string()]),
+                            outbound: Some("direct".to_string()),
+                            port: None, domain: None, geosite: None, geoip: None,
+                        });
+                    }
+                    
+                    // Default Rule (Implicitly Direct due to outbounds order, but good to be explicit if needed)
+                    // Sing-box defaults to first outbound if no match.
+                    
+                    rules
+                }
+            }),
             // Enable Clash API for device monitoring and limit enforcement
             experimental: Some(ExperimentalConfig {
                 clash_api: ClashApiConfig {

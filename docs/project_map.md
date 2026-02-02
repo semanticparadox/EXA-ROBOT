@@ -8,6 +8,13 @@
 - **`Cargo.toml`**: Workspace configuration definition.
 - **`Cargo.lock`**: Exact dependency versions lockfile.
 
+## 📁 docs/
+- **`user_guide.md`**: Simple explanation and installation guide.
+- **`advanced_features.md`**: Guide for Distributed Frontend, Subscriptions, and AdBlocking.
+- **`c4-context.md`**: Architectural diagrams.
+- **`api_reference.md`**: Technical API reference.
+- **`project_map.md`**: This file.
+
 ## 📁 apps/
 Contains the main applications of the workspace.
 
@@ -25,6 +32,8 @@ HTTP Request Handlers for the Admin Panel.
 - **`admin_network.rs`**: Network-specific routes (Node Inbounds, Plan Bindings).
 - **`admin_store.rs`**: Store management routes (Categories, Products, Orders).
 - **`node_control.rs`**: Node diagnostics and control (Logs, Restart, Health).
+- **`client.rs`**: Client-facing API (AI Routing, Auth).
+- **`frontend.rs`**: Distributed Frontend management.
 
 #### `apps/panel/src/services/`
 Core Business Logic.

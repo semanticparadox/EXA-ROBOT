@@ -1,7 +1,15 @@
 pub mod store_service;
 pub mod orchestration_service;
 pub mod pay_service;
-pub mod activity_service;
+pub mod activity_service; // Legacy, to be replaced by logging_service
+pub mod logging_service; // NEW
+pub mod referral_service; // NEW
+pub mod redis_service; // NEW
+pub mod pubsub_service; // NEW
+pub mod analytics_service;
 pub mod monitoring;
 pub mod traffic_service;
 pub mod connection_service;
+pub mod channel_trial_service;  // NEW: Channel membership trial management
+pub mod export_service;  // NEW: Database and settings export/backup
+pub mod notification_service;

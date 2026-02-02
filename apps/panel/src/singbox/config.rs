@@ -151,4 +151,8 @@ pub struct RouteRule {
     pub port: Option<Vec<u16>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geosite: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geoip: Option<Vec<String>>,
 }

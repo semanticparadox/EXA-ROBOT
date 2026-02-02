@@ -28,6 +28,79 @@
         </div>
     </div>
 
+    <!-- Smart Bandwidth Policies -->
+    <div class="pt-6 border-t border-white/5">
+        <h4 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+            <i data-lucide="shield" class="w-4 h-4 text-purple-400"></i>
+            Traffic Policies
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- QoS -->
+            <label
+                class="col-span-1 flex items-center gap-3 p-3 rounded-xl border border-white/5 bg-slate-900/50 hover:bg-slate-900/80 transition-colors cursor-pointer group">
+                <div class="relative flex items-center">
+                    <input type="checkbox" name="config_qos_enabled" class="peer sr-only" {% if node.config_qos_enabled
+                        %}checked{% endif %}>
+                    <div
+                        class="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600">
+                    </div>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-slate-200">QoS Priority</span>
+                    <span class="block text-[10px] text-slate-500">Gaming/VoIP Boost</span>
+                </div>
+            </label>
+
+            <!-- Block Torrent -->
+            <label
+                class="col-span-1 flex items-center gap-3 p-3 rounded-xl border border-white/5 bg-slate-900/50 hover:bg-slate-900/80 transition-colors cursor-pointer group">
+                <div class="relative flex items-center">
+                    <input type="checkbox" name="config_block_torrent" class="peer sr-only" {% if
+                        node.config_block_torrent %}checked{% endif %}>
+                    <div
+                        class="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600">
+                    </div>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-slate-200">Block Torrents</span>
+                    <span class="block text-[10px] text-slate-500">Prevent P2P Abuse</span>
+                </div>
+            </label>
+
+            <!-- Block Ads -->
+            <label
+                class="col-span-1 flex items-center gap-3 p-3 rounded-xl border border-white/5 bg-slate-900/50 hover:bg-slate-900/80 transition-colors cursor-pointer group">
+                <div class="relative flex items-center">
+                    <input type="checkbox" name="config_block_ads" class="peer sr-only" {% if node.config_block_ads
+                        %}checked{% endif %}>
+                    <div
+                        class="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600">
+                    </div>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-slate-200">Block Ads</span>
+                    <span class="block text-[10px] text-slate-500">Reduce Bandwidth</span>
+                </div>
+            </label>
+
+            <!-- Block Porn -->
+            <label
+                class="col-span-1 flex items-center gap-3 p-3 rounded-xl border border-white/5 bg-slate-900/50 hover:bg-slate-900/80 transition-colors cursor-pointer group">
+                <div class="relative flex items-center">
+                    <input type="checkbox" name="config_block_porn" class="peer sr-only" {% if node.config_block_porn
+                        %}checked{% endif %}>
+                    <div
+                        class="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600">
+                    </div>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-slate-200">Block Porn</span>
+                    <span class="block text-[10px] text-slate-500">Child Safety</span>
+                </div>
+            </label>
+        </div>
+    </div>
+
     <div class="pt-6 border-t border-white/5 flex gap-3">
         <button type="button"
             class="flex-1 py-3 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium"
