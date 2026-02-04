@@ -13,6 +13,7 @@ use tracing::{info, error};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 
 #[derive(serde::Serialize)]
+#[allow(dead_code)]
 pub struct TrialStats {
     pub default_count: i64,
     pub channel_count: i64,
@@ -22,8 +23,8 @@ pub struct TrialStats {
 #[derive(Template)]
 #[template(path = "settings.html")]
 pub struct SettingsTemplate {
-    pub masked_bot_token: String,
-    pub bot_status: String,
+    // pub masked_bot_token: String,  // Removed unused
+    // pub bot_status: String,        // Removed unused
     pub masked_payment_api_key: String,
     pub masked_cryptomus_merchant_id: String,
     pub masked_cryptomus_payment_api_key: String,
@@ -64,7 +65,7 @@ pub struct BotTemplate {
     pub masked_bot_token: String,
     pub bot_status: String,
     pub bot_username: String,
-    pub webhook_info: Option<String>,
+    // pub webhook_info: Option<String>, // Removed unused
     pub is_auth: bool,
     pub admin_path: String,
     pub active_page: String,
@@ -581,10 +582,11 @@ pub struct UpdateNodeForm {
     pub ip: String,
     
     // Bandwidth Shaping checkboxes
-    pub config_qos_enabled: Option<String>,
-    pub config_block_torrent: Option<String>,
-    pub config_block_ads: Option<String>,
-    pub config_block_porn: Option<String>,
+    // Bandwidth Shaping checkboxes - Unused/Rudimentary
+    // pub config_qos_enabled: Option<String>,
+    // pub config_block_torrent: Option<String>,
+    // pub config_block_ads: Option<String>,
+    // pub config_block_porn: Option<String>,
 }
 
 #[derive(Template)]
@@ -657,8 +659,8 @@ pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
     let masked_aaio_secret_2 = if !aaio_secret_2.is_empty() { mask_key(&aaio_secret_2) } else { "".to_string() };
 
     let template = SettingsTemplate {
-        masked_bot_token,
-        bot_status,
+        // masked_bot_token, // Removed
+        // bot_status,       // Removed
         masked_payment_api_key,
         masked_cryptomus_merchant_id,
         masked_cryptomus_payment_api_key,
@@ -2280,7 +2282,7 @@ pub async fn get_bot_page(
         masked_bot_token,
         bot_status,
         bot_username,
-        webhook_info: None, // Can be fetched from bot manager later
+        // webhook_info: None, // Removed
         is_auth: true,
         admin_path,
         active_page: "bot".to_string(),
@@ -2352,9 +2354,9 @@ pub async fn update_trial_config(
     );
     
     // Save to DB
-    state.settings.set("free_trial_days", &form.free_trial_days.to_string()).await;
-    state.settings.set("channel_trial_days", &form.channel_trial_days.to_string()).await;
-    state.settings.set("required_channel_id", &form.required_channel_id).await;
+    let _ = state.settings.set("free_trial_days", &form.free_trial_days.to_string()).await;
+    let _ = state.settings.set("channel_trial_days", &form.channel_trial_days.to_string()).await;
+    let _ = state.settings.set("required_channel_id", &form.required_channel_id).await;
     
     let admin_path = std::env::var("ADMIN_PATH")
         .unwrap_or_else(|_| "/admin".to_string());
@@ -2362,6 +2364,7 @@ pub async fn update_trial_config(
     Redirect::to(&format!("{}/settings", admin_path))
 }
 
+#[allow(dead_code)]
 async fn get_trial_stats(pool: &sqlx::SqlitePool) -> anyhow::Result<TrialStats> {
     let result = sqlx::query_as::<_, (Option<i64>, Option<i64>, Option<i64>)>(
         "SELECT 
