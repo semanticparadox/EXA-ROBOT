@@ -220,7 +220,7 @@ mod tests {
     #[tokio::test]
     async fn test_export_service_creation() {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
-        let service = ExportService::new(pool);
+        let _service = ExportService::new(pool);
         
         // Service should initialize without errors
         assert!(true);

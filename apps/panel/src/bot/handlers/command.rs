@@ -454,6 +454,7 @@ pub async fn message_handler(
             }
 
             "🛍 Buy Subscription" | "/plans" => {
+                let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 let plans = state.store_service.get_active_plans().await.unwrap_or_default();
                 
                 if plans.is_empty() {
@@ -506,11 +507,13 @@ pub async fn message_handler(
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
                         .await
                         .map(|m| {
-                            let state = state.clone();
-                            let uid = user.id;
-                            tokio::spawn(async move {
-                                let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
-                            });
+                            if let Some(user) = user_db {
+                                let state = state.clone();
+                                let uid = user.id;
+                                tokio::spawn(async move {
+                                    let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                                });
+                            }
                         });
                 }
             }

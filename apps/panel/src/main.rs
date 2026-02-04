@@ -216,6 +216,7 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
         store_service.clone(),
     ));
 
+    let bot_token = settings.get_or_default("bot_token", "").await;
     let pay_token = settings.get_or_default("payment_api_key", "").await;
     let nowpayments_key = settings.get_or_default("nowpayments_key", "").await;
     let crystalpay_login = settings.get_or_default("crystalpay_login", "").await;
@@ -237,6 +238,7 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
         pool.clone(),
         store_service.clone(),
         bot_manager.clone(),
+        bot_token,
         pay_token,
         nowpayments_key,
         crystalpay_login,
@@ -256,7 +258,7 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
     let channel_trial_service = Arc::new(services::channel_trial_service::ChannelTrialService::new(pool.clone()));
     let notification_service = Arc::new(services::notification_service::NotificationService::new(pool.clone()));
 
-    let pubsub = Arc::new(services::pubsub_service::PubSubService::new(redis_url).await.expect("Failed to init PubSub"));
+    let pubsub = services::pubsub_service::PubSubService::new(redis_url).await.expect("Failed to init PubSub");
 
     // App state
     let state = AppState {

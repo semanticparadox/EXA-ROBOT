@@ -74,22 +74,19 @@ pub struct PayService {
     #[allow(dead_code)]
     store_service: Arc<StoreService>,
     bot_manager: Arc<BotManager>,
+    bot_token: String, // NEW: Main bot token for Stars
     cryptobot_token: String,
     nowpayments_key: String,
     crystalpay_login: String,
     crystalpay_secret: String,
-
     stripe_secret_key: String,
     cryptomus_merchant_id: String,
     cryptomus_payment_api_key: String,
     aaio_merchant_id: String,
     aaio_secret_1: String,
     aaio_secret_2: String,
-    
-    // Lava.top
     lava_project_id: String,
     lava_secret_key: String,
-
     is_testnet: bool,
 }
 
@@ -98,6 +95,7 @@ impl PayService {
         pool: SqlitePool, 
         store_service: Arc<StoreService>, 
         bot_manager: Arc<BotManager>, 
+        bot_token: String, // NEW
         cryptobot_token: String, 
         nowpayments_key: String, 
         crystalpay_login: String,
@@ -117,6 +115,7 @@ impl PayService {
             pool, 
             store_service, 
             bot_manager, 
+            bot_token, // NEW
             cryptobot_token, 
             nowpayments_key, 
             crystalpay_login,
@@ -577,7 +576,7 @@ impl PayService {
         let payload = payment_type.to_payload_string(user_id);
         
         let client = reqwest::Client::new();
-        let bot_token = self.bot_manager.get_token().await; 
+        let bot_token = self.bot_token.clone(); 
         if bot_token.is_empty() {
             return Err(anyhow!("Bot token required for Stars"));
         }

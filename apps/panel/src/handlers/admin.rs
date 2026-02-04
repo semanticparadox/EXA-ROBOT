@@ -23,34 +23,377 @@ pub struct TrialStats {
 #[derive(Template)]
 #[template(path = "settings.html")]
 pub struct SettingsTemplate {
-    // pub masked_bot_token: String,  // Removed unused
-    // pub bot_status: String,        // Removed unused
     pub masked_payment_api_key: String,
-    pub masked_nowpayments_api_key: String, // NEW
+    pub masked_nowpayments_api_key: String,
     pub masked_cryptomus_merchant_id: String,
     pub masked_cryptomus_payment_api_key: String,
     pub masked_aaio_merchant_id: String,
     pub masked_aaio_secret_1: String,
     pub masked_aaio_secret_2: String,
-    
-    // Lava.top
     pub masked_lava_project_id: String,
     pub masked_lava_secret_key: String,
-    
-    // Stars
     pub telegram_stars_enabled: bool,
-
     pub payment_ipn_url: String,
     pub currency_rate: String,
     pub support_url: String,
     pub bot_username: String,
     pub brand_name: String,
     pub terms_of_service: String,
-// ... (rest of Template struct)
+    pub decoy_enabled: bool,
+    pub decoy_urls: String,
+    pub decoy_min_interval: String,
+    pub decoy_max_interval: String,
+    pub kill_switch_enabled: bool,
+    pub kill_switch_timeout: String,
+    pub free_trial_days: i64,
+    pub channel_trial_days: i64,
+    pub required_channel_id: String,
+    pub last_export: String,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
 
-// IN get_settings function:
+#[derive(Template)]
+#[template(path = "bot.html")]
+pub struct BotTemplate {
+    pub masked_bot_token: String,
+    pub bot_status: String,
+    pub bot_username: String,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Deserialize)]
+pub struct SaveSettingsForm {
+    pub bot_token: Option<String>,
+    pub payment_api_key: Option<String>,
+    pub nowpayments_api_key: Option<String>,
+    pub lava_project_id: Option<String>,
+    pub lava_secret_key: Option<String>,
+    pub telegram_stars_enabled: Option<String>,
+    pub cryptomus_merchant_id: Option<String>,
+    pub cryptomus_payment_api_key: Option<String>,
+    pub aaio_merchant_id: Option<String>,
+    pub aaio_secret_1: Option<String>,
+    pub aaio_secret_2: Option<String>,
+    pub payment_ipn_url: Option<String>,
+    pub currency_rate: Option<String>,
+    pub support_url: Option<String>,
+    pub bot_username: Option<String>,
+    pub brand_name: Option<String>,
+    pub terms_of_service: Option<String>,
+    pub decoy_enabled: Option<String>,
+    pub decoy_urls: Option<String>,
+    pub decoy_min_interval: Option<String>,
+    pub decoy_max_interval: Option<String>,
+    pub kill_switch_enabled: Option<String>,
+    pub kill_switch_timeout: Option<String>,
+}
+
+fn mask_key(key: &str) -> String {
+    if key.len() <= 8 {
+        return "****".to_string();
+    }
+    format!("{}****{}", &key[..4], &key[key.len() - 4..])
+}
+
+#[derive(Template)]
+#[template(path = "users.html")]
+pub struct UsersTemplate {
+    pub users: Vec<User>,
+    pub search: String,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserOrderDisplay {
+    pub id: i64,
+    pub total_amount: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "user_details.html")]
+pub struct UserDetailsTemplate {
+    pub user: User,
+    pub subscriptions: Vec<SubscriptionWithPlan>,
+    pub orders: Vec<UserOrderDisplay>,
+    pub referrals: Vec<crate::services::store_service::DetailedReferral>,
+    pub total_referral_earnings: String,
+    pub available_plans: Vec<Plan>,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct SubscriptionWithPlan {
+    pub id: i64,
+    pub plan_name: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub status: String,
+    pub price: i64,
+    pub active_devices: i64,
+    pub device_limit: i64,
+}
+
+#[derive(Template)]
+#[template(path = "bot_logs.html")]
+pub struct BotLogsTemplate {
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Template)]
+#[template(path = "partials/bot_status.html")]
+pub struct BotStatusPartial {
+    pub bot_status: String,
+    pub admin_path: String,
+}
+
+#[derive(Template)]
+#[template(path = "nodes.html")]
+pub struct NodesTemplate {
+    pub nodes: Vec<Node>,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Deserialize)]
+pub struct InstallNodeForm {
+    pub name: String,
+    pub ip: Option<String>,
+    pub vpn_port: i32,
+    pub auto_configure: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateNodeForm {
+    pub name: String,
+    pub ip: String,
+}
+
+#[derive(askama::Template)]
+#[template(path = "node_edit_modal.html")]
+pub struct NodeEditModalTemplate {
+    pub node: Node,
+    pub admin_path: String,
+}
+
+#[derive(Deserialize)]
+pub struct AdminGiftForm {
+    pub duration_id: i64,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct OrderWithUser {
+    pub id: i64,
+    pub username: String,
+    pub total_amount: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "transactions.html")]
+pub struct TransactionsTemplate {
+    pub orders: Vec<OrderWithUser>,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Template)]
+#[template(path = "store_categories.html")]
+pub struct StoreCategoriesTemplate {
+    pub categories: Vec<crate::models::store::Category>,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Template)]
+#[template(path = "store_products.html")]
+pub struct StoreProductsTemplate {
+    pub products: Vec<crate::models::store::Product>,
+    pub categories: Vec<crate::models::store::Category>,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateCategoryForm {
+    pub name: String,
+    pub description: String,
+    pub sort_order: i64,
+}
+pub struct RecentActivity {
+    pub action: String,
+    pub details: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "dashboard.html")]
+pub struct DashboardTemplate {
+    pub active_nodes: i64,
+    pub total_users: i64,
+    pub active_subs: i64,
+    pub total_revenue: String,
+    pub total_traffic: String,
+    pub activities: Vec<RecentActivity>,
+    pub db_status: String,
+    pub redis_status: String,
+    pub bot_status: String,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+#[derive(Template)]
+#[template(path = "login.html")]
+pub struct LoginTemplate {
+    pub admin_path: String,
+    pub is_auth: bool,
+    pub active_page: String,
+}
+
+#[derive(Template)]
+#[template(path = "analytics.html")]
+pub struct AnalyticsTemplate {
+    pub total_traffic_30d: String,
+    pub active_nodes_count: i64,
+    pub orders: Vec<OrderWithUser>,
+    pub top_users: Vec<UserWithTraffic>,
+    pub history_data_json: String,
+    pub history_labels_json: String,
+    pub node_series_json: String,
+    pub node_labels_json: String,
+    pub is_auth: bool,
+    pub admin_path: String,
+    pub active_page: String,
+}
+
+pub struct UserWithTraffic {
+    pub username: String,
+    pub total_traffic_fmt: String,
+}
+
+#[derive(Deserialize)]
+pub struct LoginForm {
+    pub username: String,
+    pub password: String,
+}
+
+pub async fn get_dashboard(State(state): State<AppState>) -> impl IntoResponse {
+    let active_nodes = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM nodes WHERE status = 'active'").fetch_one(&state.pool).await.unwrap_or(0);
+    let total_users = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users").fetch_one(&state.pool).await.unwrap_or(0);
+    let active_subs = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM subscriptions WHERE status = 'active'").fetch_one(&state.pool).await.unwrap_or(0);
+    let revenue_cents = sqlx::query_scalar::<_, i64>("SELECT SUM(total_amount) FROM orders WHERE status = 'completed'").fetch_one(&state.pool).await.unwrap_or(0);
+    let total_revenue = format!("{:.2}", revenue_cents as f64 / 100.0);
+    
+    // Total traffic across all nodes
+    let total_traffic_bytes = sqlx::query_scalar::<_, i64>("SELECT SUM(total_ingress + total_egress) FROM nodes").fetch_one(&state.pool).await.unwrap_or(0);
+    let total_traffic = format_bytes(total_traffic_bytes as u64);
+
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    let is_running = state.bot_manager.is_running().await;
+    let bot_status = if is_running { "running" } else { "stopped" }.to_string();
+
+    let template = DashboardTemplate {
+        active_nodes,
+        total_users,
+        active_subs,
+        total_revenue,
+        total_traffic,
+        activities: Vec::new(), // Placeholder
+        db_status: "Online".to_string(),
+        redis_status: "Online".to_string(),
+        bot_status,
+        is_auth: true,
+        admin_path,
+        active_page: "dashboard".to_string(),
+    };
+    Html(template.render().unwrap())
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 { format!("{} B", bytes) }
+    else if bytes < 1024 * 1024 { format!("{:.1} KB", bytes as f64 / 1024.0) }
+    else if bytes < 1024 * 1024 * 1024 { format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)) }
+    else { format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0)) }
+}
+
+pub async fn get_login() -> impl IntoResponse {
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+    Html(LoginTemplate { 
+        admin_path,
+        is_auth: false,
+        active_page: "login".to_string(),
+    }.render().unwrap())
+}
+
+pub async fn login(Form(form): Form<LoginForm>) -> impl IntoResponse {
+    let admin_user = std::env::var("ADMIN_USER").unwrap_or_else(|_| "admin".to_string());
+    let admin_pass = std::env::var("ADMIN_PASS").unwrap_or_else(|_| "admin".to_string());
+
+    if form.username == admin_user && form.password == admin_pass {
+        let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+        let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+        
+        // Use the same auth_token logic as is_authenticated
+        let token = std::env::var("ADMIN_PASS").unwrap_or_else(|_| "admin".to_string());
+        let cookie = Cookie::build(("auth_token", token))
+            .path("/")
+            .http_only(true)
+            .build();
+            
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("HX-Redirect", format!("{}/dashboard", admin_path).parse().unwrap());
+        (axum::http::StatusCode::OK, jar_with_cookie(cookie), headers, "Success").into_response()
+    } else {
+        Html("<div class='text-red-500 text-sm mt-2'>Invalid username or password</div>").into_response()
+    }
+}
+
+fn jar_with_cookie(cookie: Cookie<'static>) -> CookieJar {
+    let jar = CookieJar::new();
+    jar.add(cookie)
+}
+
+pub async fn logout(jar: CookieJar) -> impl IntoResponse {
+    let mut cookie = Cookie::from("auth_token");
+    cookie.set_value("");
+    cookie.set_path("/");
+    
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+    
+    (jar.add(cookie), axum::response::Redirect::to(&format!("{}/login", admin_path)))
+}
+pub async fn get_settings(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> impl IntoResponse {
+    if !is_authenticated(&jar) {
+        let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+        return axum::response::Redirect::to(&admin_path).into_response();
+    }
+
     let payment_api_key = state.settings.get_or_default("payment_api_key", "").await;
-    let nowpayments_api_key = state.settings.get_or_default("nowpayments_api_key", "").await; // NEW
+    let nowpayments_api_key = state.settings.get_or_default("nowpayments_api_key", "").await;
     let lava_project_id = state.settings.get_or_default("lava_project_id", "").await;
     let lava_secret_key = state.settings.get_or_default("lava_secret_key", "").await;
     let telegram_stars_enabled = state.settings.get_or_default("telegram_stars_enabled", "false").await == "true";
@@ -62,29 +405,22 @@ pub struct SettingsTemplate {
     let brand_name = state.settings.get_or_default("brand_name", "CARAMBA").await;
     let terms_of_service = state.settings.get_or_default("terms_of_service", "Welcome to CARAMBA.").await;
     
-    // Fetch Decoy Settings
     let decoy_enabled = state.settings.get_or_default("decoy_enabled", "false").await == "true";
-    let decoy_urls = state.settings.get_or_default("decoy_urls", "[\"https://www.google.com\", \"https://www.azure.com\", \"https://www.netflix.com\"]").await;
+    let decoy_urls = state.settings.get_or_default("decoy_urls", "[]").await;
     let decoy_min_interval = state.settings.get_or_default("decoy_min_interval", "60").await;
     let decoy_max_interval = state.settings.get_or_default("decoy_max_interval", "600").await;
 
-    // Fetch Kill Switch Settings
     let kill_switch_enabled = state.settings.get_or_default("kill_switch_enabled", "false").await == "true";
-    let kill_switch_timeout = state.settings.get_or_default("kill_switch_timeout", "300").await; // Default 5 mins
+    let kill_switch_timeout = state.settings.get_or_default("kill_switch_timeout", "300").await;
 
-    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| {
-        tracing::warn!("ADMIN_PATH env var not found in get_settings handler! Defaulting to /admin");
-        "/admin".to_string()
-    });
-    tracing::info!("get_settings handler seeing ADMIN_PATH: {}", admin_path);
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
 
-    // Fetch Trial Config (Persistent)
     let free_trial_days = state.settings.get_or_default("free_trial_days", "3").await.parse().unwrap_or(3);
     let channel_trial_days = state.settings.get_or_default("channel_trial_days", "7").await.parse().unwrap_or(7);
     let required_channel_id = state.settings.get_or_default("required_channel_id", "").await;
     let last_export = state.settings.get_or_default("last_export", "Never").await;
 
-    let masked_bot_token = if !bot_token.is_empty() { mask_key(&bot_token) } else { "".to_string() };
     let masked_payment_api_key = if !payment_api_key.is_empty() { mask_key(&payment_api_key) } else { "".to_string() };
     let masked_nowpayments_api_key = if !nowpayments_api_key.is_empty() { mask_key(&nowpayments_api_key) } else { "".to_string() };
 
@@ -104,21 +440,42 @@ pub struct SettingsTemplate {
     let masked_aaio_secret_2 = if !aaio_secret_2.is_empty() { mask_key(&aaio_secret_2) } else { "".to_string() };
 
     let template = SettingsTemplate {
-        // masked_bot_token, // Removed
-        // bot_status,       // Removed
         masked_payment_api_key,
-        masked_nowpayments_api_key, // NEW
+        masked_nowpayments_api_key,
         masked_cryptomus_merchant_id,
         masked_cryptomus_payment_api_key,
         masked_aaio_merchant_id,
         masked_aaio_secret_1,
         masked_aaio_secret_2,
-        
         masked_lava_project_id,
         masked_lava_secret_key,
         telegram_stars_enabled,
+        payment_ipn_url,
+        currency_rate,
+        support_url,
+        bot_username,
+        brand_name,
+        terms_of_service,
+        decoy_enabled,
+        decoy_urls,
+        decoy_min_interval,
+        decoy_max_interval,
+        kill_switch_enabled,
+        kill_switch_timeout,
+        free_trial_days,
+        channel_trial_days,
+        required_channel_id,
+        last_export,
+        is_auth: true,
+        admin_path,
+        active_page: "settings".to_string(),
+    };
 
-
+    match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Template error: {}", e)).into_response(),
+    }
+}
 
 // --- System Logs ---
 
@@ -258,21 +615,7 @@ pub async fn save_settings(
     // Stars Toggle
     if let Some(v) = form.telegram_stars_enabled {
         settings.insert("telegram_stars_enabled".to_string(), v);
-    } else {
-        // If checkbox is unchecked, it might not send anything, but usually we handle "on" or null. 
-        // We'll rely on explicit presence. If absent and this is a partial update form, we might miss it.
-        // But this is a full form submit usually.
-        // However, HTML checkboxes: if unchecked, not sent. 
-        // If we want to support unchecking, we need to know if the form INTENDED to update this field.
-        // For now, let's assume if it is NOT in the form, we set it to false?
-        // Risky if form is partial. 
-        // Let's assume the frontend sends "false" or we handle "on".
-        // Actually, let's just save if present.
-        // For booleans in settings forms, typically we use a hidden input "false" before the checkbox "true".
-        // Or we check `form.decoy_enabled` style.
     }
-    // Let's use the explicit field check.
-    settings.insert("telegram_stars_enabled".to_string(), form.telegram_stars_enabled.unwrap_or("false".to_string()));
 
 
     let current_cryptomus_id = state.settings.get_or_default("cryptomus_merchant_id", "").await;
@@ -1089,44 +1432,6 @@ pub async fn get_users(
     }
 }
 
-#[derive(Template)]
-#[template(path = "user_details.html")]
-pub struct UserDetailsTemplate {
-    pub user: User,
-    pub subscriptions: Vec<SubscriptionWithPlan>,
-    pub orders: Vec<UserOrderDisplay>,
-    pub referrals: Vec<crate::services::store_service::DetailedReferral>,
-    pub total_referral_earnings: String,
-    pub available_plans: Vec<Plan>,
-    pub is_auth: bool,
-    pub admin_path: String,
-    pub active_page: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct UserOrderDisplay {
-    pub id: i64,
-    pub total_amount: String,
-    pub status: String,
-    pub created_at: String,
-}
-
-#[derive(Deserialize)]
-pub struct AdminGiftForm {
-    pub duration_id: i64,
-}
-
-#[derive(sqlx::FromRow, Debug, Clone)]
-pub struct SubscriptionWithPlan {
-    pub id: i64,
-    pub plan_name: String,
-    pub expires_at: chrono::DateTime<chrono::Utc>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub status: String,
-    pub price: i64,
-    pub active_devices: i64,
-    pub device_limit: i64,
-}
 
 pub async fn admin_gift_subscription(
     Path(user_id): Path<i64>,
@@ -1156,6 +1461,7 @@ pub async fn admin_gift_subscription(
             }
 
             let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+            let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
             return axum::response::Redirect::to(&format!("{}/users/{}", admin_path, user_id)).into_response();
         },
         Err(e) => {
@@ -1453,6 +1759,84 @@ pub async fn handle_payment(
     axum::http::StatusCode::OK
 }
 
+pub async fn activate_node(
+    Path(id): Path<i64>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let res = sqlx::query("UPDATE nodes SET status = 'active' WHERE id = ?")
+        .bind(id)
+        .execute(&state.pool)
+        .await;
+
+    match res {
+        Ok(_) => {
+            let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+            let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+            ([("HX-Redirect", format!("{}/nodes", admin_path))]).into_response()
+        },
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to activate: {}", e)).into_response(),
+    }
+}
+
+pub async fn get_traffic_analytics(State(state): State<AppState>) -> impl IntoResponse {
+    let now = chrono::Utc::now();
+    let _thirty_days_ago = now - chrono::Duration::days(30);
+
+    // 1. Total Traffic (30d)
+    let total_traffic_30d_bytes = sqlx::query_scalar::<_, i64>("SELECT SUM(total_ingress + total_egress) FROM nodes").fetch_one(&state.pool).await.unwrap_or(0); // This is total, should be sum of stats for 30d if available
+    let total_traffic_30d = format_bytes(total_traffic_30d_bytes as u64);
+
+    // 2. Active Nodes Count
+    let active_nodes_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM nodes WHERE status = 'active'").fetch_one(&state.pool).await.unwrap_or(0);
+
+    // 3. Recent Orders
+    let orders = get_recent_orders(&state.pool).await;
+
+    // 4. Top Users (Placeholder - using all users for now)
+    let top_users = sqlx::query_as!(
+        UserWithTraffic,
+        r#"SELECT COALESCE(username, full_name, 'Unknown') as "username!", '0 GB' as "total_traffic_fmt!" FROM users LIMIT 5"#
+    ).fetch_all(&state.pool).await.unwrap_or_default();
+
+    let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+
+    let template = AnalyticsTemplate {
+        total_traffic_30d,
+        active_nodes_count,
+        orders,
+        top_users,
+        history_data_json: "[0,0,0,0,0]".to_string(),
+        history_labels_json: r#"["Mon", "Tue", "Wed", "Thu", "Fri"]"#.to_string(),
+        node_series_json: "[100]".to_string(),
+        node_labels_json: r#"["All Nodes"]"#.to_string(),
+        is_auth: true,
+        admin_path,
+        active_page: "analytics".to_string(),
+    };
+    Html(template.render().unwrap())
+}
+
+async fn get_recent_orders(pool: &sqlx::SqlitePool) -> Vec<OrderWithUser> {
+    sqlx::query_as::<_, OrderWithUser>(
+        r#"
+        SELECT 
+            o.id, 
+            COALESCE(u.username, u.full_name, 'Unknown') as username, 
+            printf("%.2f", CAST(o.total_amount AS FLOAT) / 100.0) as total_amount, 
+            o.status, 
+            COALESCE(strftime('%Y-%m-%d %H:%M', o.created_at), '') as created_at
+        FROM orders o
+        JOIN users u ON o.user_id = u.id
+        ORDER BY o.created_at DESC
+        LIMIT 10
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}
+
 pub async fn bot_logs_page(jar: CookieJar) -> impl IntoResponse {
     if !is_authenticated(&jar) {
         return axum::response::Redirect::to("/admin/login").into_response();
@@ -1617,8 +2001,8 @@ pub async fn get_transactions(
         SELECT 
             o.id, 
             COALESCE(u.username, u.full_name, 'Unknown') as "username!", 
-            o.total_amount, 
-            o.status, 
+            o.total_amount as "total_amount!", 
+            o.status as "status!", 
             o.created_at
         FROM orders o
         JOIN users u ON o.user_id = u.id
@@ -1679,18 +2063,19 @@ pub async fn get_subscription_devices(
     
     // Add "Reset All Sessions" button at the top
     html.push_str(&format!(
-        r#"
+        r##"
         <div class="flex justify-between items-center mb-6 p-4 rounded-2xl bg-orange-500/10 border border-orange-500/10 shadow-lg shadow-orange-500/5">
             <div>
                 <p class="text-sm font-bold text-orange-400 mb-0.5">Manage Active Sessions</p>
                 <p class="text-[11px] text-slate-500">Disconnect all current devices immediately</p>
             </div>
-            <button hx-post="{}/subs/{}/devices/kill" hx-target="#devices_content" hx-confirm="This will disconnect ALL currently connected users for this subscription. Continue?"
+            <button hx-post="{}/subs/{}/devices/kill" hx-target="#[derive(askama::Template)]
+#[template(path = "node_edit_modal.html")]evices_content" hx-confirm="This will disconnect ALL currently connected users for this subscription. Continue?"
                 class="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all shadow-lg shadow-orange-500/20 active:scale-95">
                 Reset All
             </button>
         </div>
-        "#, admin_path, sub_id
+        "##, admin_path, sub_id
     ));
 
     if ips.is_empty() {
@@ -1748,19 +2133,20 @@ pub async fn admin_kill_subscription_sessions(
 
     // 3. Return a success message
     let success_html = format!(
-        r#"
+        r##"
         <div class="flex flex-col items-center justify-center py-12 text-center animate-fade-in">
             <div class="w-20 h-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center mb-6 text-emerald-400 border border-emerald-500/20 shadow-xl shadow-emerald-500/10 transform rotate-3">
                 <i data-lucide="check-circle" class="w-10 h-10"></i>
             </div>
             <h4 class="text-xl font-bold text-white mb-2 tracking-tight">Sessions Reset Successfully</h4>
             <p class="text-sm text-slate-500 mb-8 px-12 leading-relaxed">All active connections for subscription #{} have been terminated. It may take up to 60 seconds for all caches to clear.</p>
-            <button hx-get="{}/subs/{}/devices" hx-target="#devices_content"
+            <button hx-get="{}/subs/{}/devices" hx-target="#[derive(askama::Template)]
+#[template(path = "node_edit_modal.html")]evices_content"
                 class="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold shadow-lg transition-all active:scale-95 border border-white/5">
                 Refresh Device List
             </button>
         </div>
-        "#, sub_id, admin_path, sub_id
+        "##, sub_id, admin_path, sub_id
     );
     
     Html(success_html).into_response()
@@ -1858,7 +2244,7 @@ pub async fn db_export_download(
             
             // Update last export timestamp
             let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-            state.settings.set("last_export", &now_str).await;
+            let _ = state.settings.set("last_export", &now_str).await;
 
             (
                 StatusCode::OK,

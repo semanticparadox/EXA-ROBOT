@@ -171,10 +171,12 @@ impl ChannelTrialService {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_trial_days_default() {
-        std::env::set_var("FREE_TRIAL_DAYS", "3");
-        std::env::set_var("CHANNEL_TRIAL_DAYS", "7");
+    #[tokio::test]
+    async fn test_trial_days_default() {
+        unsafe {
+            std::env::set_var("FREE_TRIAL_DAYS", "3");
+            std::env::set_var("CHANNEL_TRIAL_DAYS", "7");
+        }
 
         let pool = SqlitePool::connect(":memory:").await.unwrap();
         let service = ChannelTrialService::new(pool);
