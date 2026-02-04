@@ -10,14 +10,9 @@ use crate::models::store::{Plan, User, Order};
 use crate::services::logging_service::LoggingService;
 use std::collections::HashMap;
 use tracing::{info, error, warn};
-use tracing::{info, error, warn};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use axum::extract::Query;
-use time::Duration; // Assuming time crate is present, or we need to add it. 
-// If time is not directly dependent, we might need `use cookie::time::Duration`? 
-// No, error said "use cargo add time".
-// I'll try to just remove the `time::` prefix if I import it, OR if I can't import it, I need to know where it comes from. Kinda weird.
-// Let's assume I can't simple `use time::Duration` if it's not in Cargo.toml.
+use time::Duration;
 // But `cookie.set_max_age` takes `time::Duration`.
 // If I search codebase for `Duration`?
 // I will try to use `time::Duration` fully qualified if I can add it, but I can't add crates.
