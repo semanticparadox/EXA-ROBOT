@@ -109,8 +109,21 @@ async fn auth_middleware(
         let token = cookie.value();
         let redis_key = format!("session:{}", token);
         // Check if token exists in Redis
-        if let Ok(Some(_)) = state.redis.get(&redis_key).await {
-            return next.run(req).await;
+        if let Ok(Some(username)) = state.redis.get(&redis_key).await {
+            // Verify this username actually exists in the DB (prevents ghost sessions after reinstall)
+            let user_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM admins WHERE username = ?)")
+                .bind(&username)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(false);
+
+            if user_exists {
+                return next.run(req).await;
+            } else {
+                tracing::warn!("Session found for '{}' but user missing in DB. Invalidating.", username);
+                // Ideally we'd delete the redis key here too, but this is a read path.
+                // The session effectively becomes invalid.
+            }
         }
     }
 
