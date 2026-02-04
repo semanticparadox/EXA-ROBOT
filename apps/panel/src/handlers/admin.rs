@@ -708,6 +708,11 @@ pub async fn save_settings(
             }
 
             info!("Updating Bot Token: len={}, snippet={}...", v.len(), &v.chars().take(5).collect::<String>());
+            
+            // Critical Debug: Log bytes to prove no hidden chars to user
+            let hex_bytes: String = v.as_bytes().iter().map(|b| format!("{:02X}", b)).collect::<Vec<String>>().join(" ");
+            info!("Bot Token Hex Dump: {}", hex_bytes);
+            
             settings.insert("bot_token".to_string(), v);
         }
     }
