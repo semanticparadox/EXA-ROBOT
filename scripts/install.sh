@@ -314,8 +314,8 @@ build_binaries() {
             export DATABASE_URL="sqlite://$APP_PANEL_DIR/exarobot.db"
             
             # Use the new consolidated migration
-            if [ -f "$APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql" ]; then
-                sqlite3 "$APP_PANEL_DIR/exarobot.db" < "$APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql" 2>/dev/null || {
+            if [ -f "$APP_PANEL_DIR/migrations/20260205000000_init.sql" ]; then
+                sqlite3 "$APP_PANEL_DIR/exarobot.db" < "$APP_PANEL_DIR/migrations/20260205000000_init.sql" 2>/dev/null || {
                     log_warn "Failed to apply migration, trying minimal schema..."
                     # Fallback: create minimal schema with ALL required columns for sqlx! macros
                     sqlite3 "$APP_PANEL_DIR/exarobot.db" <<EOF
@@ -371,7 +371,7 @@ EOF
                 }
                 log_success "Database prepared for compilation"
             else
-                log_error "Migration file not found: $APP_PANEL_DIR/migrations/20260201_consolidated_schema.sql"
+                log_error "Migration file not found: $APP_PANEL_DIR/migrations/20260205000000_init.sql"
                 exit 1
             fi
         else
@@ -475,10 +475,10 @@ EOF
         log_info "Initializing database..."
         touch "$DB_FILE"
         # Apply consolidated migration
-        if [ -f "$TEMP_BUILD_DIR/apps/panel/migrations/20260201_consolidated_schema.sql" ]; then
-             sqlite3 "$DB_FILE" < "$TEMP_BUILD_DIR/apps/panel/migrations/20260201_consolidated_schema.sql"
-        elif [ -f "$INSTALL_DIR/source/apps/panel/migrations/20260201_consolidated_schema.sql" ]; then
-             sqlite3 "$DB_FILE" < "$INSTALL_DIR/source/apps/panel/migrations/20260201_consolidated_schema.sql"
+        if [ -f "$TEMP_BUILD_DIR/apps/panel/migrations/20260205000000_init.sql" ]; then
+             sqlite3 "$DB_FILE" < "$TEMP_BUILD_DIR/apps/panel/migrations/20260205000000_init.sql"
+        elif [ -f "$INSTALL_DIR/source/apps/panel/migrations/20260205000000_init.sql" ]; then
+             sqlite3 "$DB_FILE" < "$INSTALL_DIR/source/apps/panel/migrations/20260205000000_init.sql"
         else
              log_warn "Migration file not found - database will be initialized by application on first run"
         fi
