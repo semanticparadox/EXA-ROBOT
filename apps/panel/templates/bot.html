@@ -51,43 +51,76 @@
             </form>
         </div>
 
-        <!-- Webhook Info Card -->
-        <div class="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-xl">
-            <header class="flex items-center gap-3 mb-6">
-                <div class="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                    <i data-lucide="webhook" class="w-5 h-5"></i>
+        <!-- Bot Setup Guide -->
+        <div class="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-xl space-y-6">
+            <header class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                    <i data-lucide="book-open" class="w-5 h-5"></i>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold text-white">Webhook</h3>
-                    <p class="text-xs text-slate-500">Telegram API status</p>
+                    <h3 class="text-lg font-semibold text-white">Setup Guide</h3>
+                    <p class="text-xs text-slate-500">Configure your bot with @BotFather</p>
                 </div>
             </header>
 
             <div class="space-y-4">
-                <div class="flex items-center justify-between p-3 rounded-lg bg-slate-950/50 border border-white/5">
-                    <span class="text-sm text-slate-400">Status</span>
-                    {% if bot_status == "running" %}
-                    <span class="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">ACTIVE</span>
-                    {% else %}
-                    <span class="text-xs font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded">INACTIVE</span>
-                    {% endif %}
+                <!-- Step 1: Token -->
+                <div class="p-3 rounded-xl bg-slate-950/50 border border-white/5">
+                    <h4 class="text-sm font-medium text-white mb-1">1. Get Bot Token</h4>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Open <a href="https://t.me/BotFather" target="_blank"
+                            class="text-indigo-400 hover:underline">@BotFather</a> and send <code
+                            class="bg-white/10 px-1 rounded">/newbot</code>. Copy the HTTP API Token and paste it in the
+                        Settings above.
+                    </p>
                 </div>
 
-                {% if !bot_username.is_empty() %}
-                <div class="flex items-center justify-between p-3 rounded-lg bg-slate-950/50 border border-white/5">
-                    <span class="text-sm text-slate-400">Username</span>
-                    <a href="https://t.me/{{ bot_username }}" target="_blank"
-                        class="text-sm text-blue-400 hover:underline">@{{ bot_username }}</a>
+                <!-- Step 2: Mini App -->
+                <div class="p-3 rounded-xl bg-slate-950/50 border border-white/5">
+                    <h4 class="text-sm font-medium text-white mb-1">2. Configure Mini App</h4>
+                    <p class="text-xs text-slate-400 leading-relaxed mb-2">
+                        To enable the "Subscription Page" (Mini App), map the menu button to your panel's domain:
+                    </p>
+                    <div class="space-y-2">
+                        <div class="flex items-center gap-2 text-xs text-slate-300">
+                            <span
+                                class="w-4 h-4 flex items-center justify-center rounded-full bg-white/10 text-[10px]">A</span>
+                            <span>Send <code class="bg-white/10 px-1 rounded">/mybots</code> -> Select your bot</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-slate-300">
+                            <span
+                                class="w-4 h-4 flex items-center justify-center rounded-full bg-white/10 text-[10px]">B</span>
+                            <span>Select <b>Bot Settings</b> -> <b>Menu Button</b> -> <b>Configure Menu
+                                    Button</b></span>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-slate-300">
+                            <span
+                                class="w-4 h-4 flex items-center justify-center rounded-full bg-white/10 text-[10px]">C</span>
+                            <span>Send the URL of your panel (must be HTTPS!):</span>
+                        </div>
+                        <code
+                            class="block w-full bg-slate-900 p-2 rounded text-xs font-mono text-emerald-400 select-all border border-white/5 break-all">https://<span class="server-domain-placeholder">YOUR_DOMAIN</span>/</code>
+                    </div>
                 </div>
-                {% endif %}
+
+                <!-- Step 3: Inline Mode (Optional) -->
+                <div class="p-3 rounded-xl bg-slate-950/50 border border-white/5">
+                    <h4 class="text-sm font-medium text-white mb-1">3. Enable Inline Mode</h4>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        Go to <b>Bot Settings</b> -> <b>Inline Mode</b> -> <b>Turn on</b>. This allows sharing
+                        subscriptions via chat.
+                    </p>
+                </div>
             </div>
 
-            <div class="mt-4 pt-4 border-t border-white/5">
-                <p class="text-[10px] text-slate-500 leading-tight">
-                    Webhook is automatically set when the service starts. Ensure your domain has a valid SSL
-                    certificate.
-                </p>
-            </div>
+            <script>
+                // Insert current domain if available
+                if (window.location.hostname) {
+                    document.querySelectorAll('.server-domain-placeholder').forEach(el => {
+                        el.innerText = window.location.hostname;
+                    });
+                }
+            </script>
         </div>
     </div>
 

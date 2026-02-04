@@ -180,26 +180,74 @@ impl ConnectionService {
         // Check if limit exceeded (0 for Unlimited)
         if device_limit > 0 && active_device_count > device_limit as usize {
             warn!(
-                "Subscription {} ({}) exceeded device limit: {}/{} devices",
+                "Subscription {} ({}) exceeded device limit: {}/{} devices. Enforcing limit.",
                 sub.id, uuid, active_device_count, device_limit
             );
 
-            // TODO: Block the subscription on all nodes
-            // TODO: Send bot notification to user
+            // Kill all connections for this subscription to enforce re-login
+            // A more granular approach would be to kill only the "newest" IP, but we don't have timestamp per connection easily here without storing checks.
+            // Killing all forces valid users to maybe reconnect, but kicks the sharers.
+            
+            self.kill_subscription_connections(uuid).await?;
 
-            // For now, just log the violation
-            info!("Would block subscription {} (UUID: {}) on all nodes", sub.id, uuid);
+            // Optional: Send notification via Bot if linked
+            // self.orchestration.notify_user(sub.user_id, "Device limit exceeded. Connections reset.").await?;
 
         } else if active_device_count > 0 {
             info!(
-                "Subscription {} ({}) within limit: {}/{} devices (limit: {})",
-                sub.id, uuid, active_device_count, device_limit, if device_limit == 0 { "Unlimited".to_string() } else { device_limit.to_string() }
+                "Subscription {} ({}) within limit: {}/{} devices",
+                sub.id, uuid, active_device_count, if device_limit == 0 { "Unlimited".to_string() } else { device_limit.to_string() }
             );
-
-            // TODO: Ensure subscription is unblocked if it was previously blocked
-            // TODO: Send recovery notification if it was previously blocked
         }
 
+        Ok(())
+    }
+
+    /// Kill all active connections for a specific subscription across all nodes
+    pub async fn kill_subscription_connections(&self, uuid: &str) -> Result<()> {
+        let nodes = self.orchestration.get_all_nodes().await?;
+        
+        for node in nodes {
+             // 1. Fetch connections again to get IDs (IDs change)
+             // Optimization: We could pass the connection list from the check phase if we refactored
+             match self.fetch_node_connections(&node.ip).await {
+                 Ok(connections) => {
+                     for conn in connections {
+                         // Check if this connection belongs to the UUID
+                         if let Some(conn_uuid) = extract_uuid_from_connection(&conn) {
+                             if conn_uuid == uuid {
+                                 // Kill it
+                                 info!("Killing connection {} on node {} for user {}", conn.id, node.name, uuid);
+                                 if let Err(e) = self.close_connection(&node.ip, &conn.id).await {
+                                     error!("Failed to close connection {} on {}: {}", conn.id, node.name, e);
+                                 }
+                             }
+                         }
+                     }
+                 },
+                 Err(e) => error!("Failed to fetch connections from {} during kill: {}", node.name, e)
+             }
+        }
+        Ok(())
+    }
+
+    /// Close a specific connection on a node via Clash API
+    async fn close_connection(&self, node_host: &str, connection_id: &str) -> Result<()> {
+        let url = format!("http://{}:9090/connections/{}", node_host, connection_id);
+        let client = reqwest::Client::new();
+        
+        let response = client.delete(&url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to delete connection on {}", node_host))?;
+            
+        if !response.status().is_success() {
+            // 404 means already gone, which is fine
+            if response.status() == reqwest::StatusCode::NOT_FOUND {
+                 return Ok(());
+            }
+            anyhow::bail!("Clash API delete error: {}", response.status());
+        }
         Ok(())
     }
 

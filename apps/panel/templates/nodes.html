@@ -26,9 +26,11 @@
                         <th class="px-6 py-4 text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 10s" hx-select="#nodes-table-body"
-                    hx-target="#nodes-table-body" hx-swap="outerHTML" id="nodes-table-body"
-                    class="divide-y divide-white/5">
+                <!-- Hidden indicator to suppress global loaders if keyed on htmx-indicator default -->
+                <div id="polling-indicator" class="hidden"></div>
+                <tbody hx-get="{{ admin_path }}/nodes" hx-trigger="every 10s, refresh_nodes from:body"
+                    hx-select="#nodes-table-body" hx-target="#nodes-table-body" hx-swap="outerHTML"
+                    hx-indicator="#polling-indicator" id="nodes-table-body" class="divide-y divide-white/5">
                     {% for node in nodes %}
                     <tr
                         class="hover:bg-white/5 transition-colors group {% if !node.is_enabled %}opacity-60 grayscale{% endif %}">
@@ -90,6 +92,8 @@
                                 <button
                                     class="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
                                     hx-post="{{ admin_path }}/nodes/{{ node.id }}/toggle" hx-swap="none"
+                                    hx-trigger="click consume"
+                                    hx-on::after-request="htmx.trigger('body', 'refresh_nodes')"
                                     title="{% if node.is_enabled %}Disable{% else %}Enable{% endif %}">
                                     <i data-lucide="power"
                                         class="w-4 h-4 {% if node.is_enabled %}text-emerald-500{% else %}text-red-500{% endif %}"></i>
@@ -211,7 +215,8 @@
             </div>
         </div>
 
-        <form hx-post="{{ admin_path }}/nodes/install" hx-swap="none" class="space-y-4">
+        <form hx-post="{{ admin_path }}/nodes/install" hx-swap="none"
+            hx-on::after-request="htmx.trigger('body', 'refresh_nodes')" class="space-y-4">
             <div>
                 <label class="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Friendly
                     Name</label>

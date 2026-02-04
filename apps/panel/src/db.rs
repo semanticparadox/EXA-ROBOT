@@ -33,6 +33,33 @@ pub async fn init_db() -> Result<SqlitePool> {
         .await
         .context("Failed to run migrations")?;
 
+    // Create frontend tables if not exist (Manual Migration)
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS frontend_servers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain TEXT NOT NULL UNIQUE,
+            ip_address TEXT NOT NULL,
+            region TEXT NOT NULL,
+            auth_token_hash TEXT,
+            token_expires_at DATETIME,
+            is_active BOOLEAN DEFAULT 1,
+            last_heartbeat DATETIME,
+            traffic_monthly INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS frontend_server_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            frontend_id INTEGER NOT NULL,
+            requests_count INTEGER DEFAULT 0,
+            bandwidth_used INTEGER DEFAULT 0,
+            recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(frontend_id) REFERENCES frontend_servers(id) ON DELETE CASCADE
+        );"
+    )
+    .execute(&pool)
+    .await?;
+
     // Post-migration repairs (Fix for existing installations missing columns)
     // 1. Ensure 'is_enabled' in nodes
     let has_is_enabled: bool = sqlx::query_scalar(
@@ -197,6 +224,21 @@ pub async fn init_db() -> Result<SqlitePool> {
         tracing::info!("Applying schema repair: Adding 'country_code' to nodes table");
         if let Err(e) = sqlx::query("ALTER TABLE nodes ADD COLUMN country_code TEXT").execute(&pool).await {
              tracing::warn!("Failed to add country_code column: {}", e);
+        }
+    }
+
+    // 12. Ensure 'last_bot_msg_id' in users (INTEGER)
+    let has_last_msg: bool = sqlx::query_scalar(
+        "SELECT count(*) > 0 FROM pragma_table_info('users') WHERE name='last_bot_msg_id'"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if !has_last_msg {
+        tracing::info!("Applying schema repair: Adding 'last_bot_msg_id' to users table");
+        if let Err(e) = sqlx::query("ALTER TABLE users ADD COLUMN last_bot_msg_id INTEGER").execute(&pool).await {
+             tracing::warn!("Failed to add last_bot_msg_id column: {}", e);
         }
     }
 

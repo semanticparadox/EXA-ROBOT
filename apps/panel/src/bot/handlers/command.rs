@@ -1,5 +1,5 @@
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, ParseMode};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, ParseMode, MessageId};
 use tracing::{info, error};
 use crate::AppState;
 use crate::bot::utils::{escape_md, check_channel_membership, get_trial_days};
@@ -157,9 +157,22 @@ pub async fn message_handler(
                     .parse_mode(ParseMode::Html)
                     .reply_markup(terms_keyboard())
                     .await
+                    .map(|m| {
+                         let state = state.clone();
+                         tokio::spawn(async move {
+                             let _ = state.store_service.update_last_bot_msg_id(user.id, m.id.0).await;
+                         });
+                    })
                     .map_err(|e| error!("Failed to send terms: {}", e));
                 return Ok(());
             }
+
+            // --- Dissolving Effect: Delete previous bot message & this command ---
+            if let Some(last_id) = user.last_bot_msg_id {
+                let _ = bot.delete_message(msg.chat.id, MessageId(last_id)).await;
+            }
+            let _ = bot.delete_message(msg.chat.id, msg.id).await;
+            // ---------------------------------------------------------------------
 
             // Auto-update profile if changed (only if fully engaged)
             if let Some(u) = msg.from.as_ref() {
@@ -185,6 +198,13 @@ pub async fn message_handler(
                     .parse_mode(ParseMode::Html)
                     .reply_markup(main_menu())
                     .await
+                    .map(|m| {
+                        let state = state.clone();
+                        let uid = user.id;
+                        tokio::spawn(async move {
+                            let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                        });
+                    })
                     .map_err(|e| error!("Failed to send welcome on /start: {}", e));
 
                 // Set persistent menu button
@@ -373,8 +393,7 @@ pub async fn message_handler(
         match text {
             // /start is already handled above in flow
             "📦 Digital Store" => {
-                    let _ = bot.delete_message(msg.chat.id, msg.id).await;
-                    let categories = state.store_service.get_categories().await.unwrap_or_default();
+                        let categories = state.store_service.get_categories().await.unwrap_or_default();
                     if categories.is_empty() {
                         let _ = bot.send_message(msg.chat.id, "❌ The store is currently empty.").await;
                     } else {
@@ -394,8 +413,7 @@ pub async fn message_handler(
                     }
             }
             "🛒 My Cart" | "/cart" => {
-                 let _ = bot.delete_message(msg.chat.id, msg.id).await;
-                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                  let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                  if let Some(user) = user_db {
                      let cart_items = state.store_service.get_user_cart(user.id).await.unwrap_or_default();
                      
@@ -436,7 +454,6 @@ pub async fn message_handler(
             }
 
             "🛍 Buy Subscription" | "/plans" => {
-                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let plans = state.store_service.get_active_plans().await.unwrap_or_default();
                 
                 if plans.is_empty() {
@@ -487,12 +504,18 @@ pub async fn message_handler(
                     let _ = bot.send_message(msg.chat.id, text)
                         .parse_mode(ParseMode::MarkdownV2)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
-                        .await;
+                        .await
+                        .map(|m| {
+                            let state = state.clone();
+                            let uid = user.id;
+                            tokio::spawn(async move {
+                                let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                            });
+                        });
                 }
             }
 
             "👤 My Profile" | "/profile" => {
-                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 
                 if let Some(user) = user_db {
@@ -518,7 +541,6 @@ pub async fn message_handler(
             }
 
             "🔐 My Services" | "/services" => {
-                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 
                 if let Some(user) = user_db {
@@ -543,7 +565,16 @@ pub async fn message_handler(
 
                     if sorted_subs.is_empty() {
                         response.push_str("📡 VPN Status: ❌ *No Subscriptions*\n\n");
-                        let _ = bot.send_message(msg.chat.id, response).parse_mode(ParseMode::MarkdownV2).await;
+                        let _ = bot.send_message(msg.chat.id, response)
+                            .parse_mode(ParseMode::MarkdownV2)
+                            .await
+                            .map(|m| {
+                                let state = state.clone();
+                                let uid = user.id;
+                                tokio::spawn(async move {
+                                    let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                                });
+                            });
                     } else {
                         // Default to page 0
                         let page = 0;
@@ -636,13 +667,19 @@ pub async fn message_handler(
                         let _ = bot.send_message(msg.chat.id, response)
                             .parse_mode(ParseMode::MarkdownV2)
                             .reply_markup(InlineKeyboardMarkup::new(buttons))
-                            .await;
+                            .await
+                            .map(|m| {
+                                let state = state.clone();
+                                let uid = user.id;
+                                tokio::spawn(async move {
+                                    let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                                });
+                            });
                     }
                 }
             }
 
             "🎁 Bonuses / Referral" | "/referral" => {
-                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
                 if let Some(user) = user_db {
                     let bot_me = bot.get_me().await.ok();
@@ -691,7 +728,6 @@ pub async fn message_handler(
             }
 
             "❓ Support" => {
-                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 let support_username = state.settings.get_or_default("support_url", "").await;
                 
                 if support_username.is_empty() {
@@ -711,9 +747,82 @@ pub async fn message_handler(
                 }
             }
 
+            "/devices" | "📱 My Devices" => {
+                  let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 if let Some(u) = user_db {
+                      // Get all subs
+                      if let Ok(subs) = state.store_service.get_user_subscriptions(u.id).await {
+                           let active_subs: Vec<_> = subs.into_iter().filter(|s| s.sub.status == "active").collect();
+                           
+                           if active_subs.is_empty() {
+                               let _ = bot.send_message(msg.chat.id, "❌ You have no active subscriptions.").await;
+                           } else if active_subs.len() == 1 {
+                               // Auto-show active devices for the only subscription
+                               let sub = &active_subs[0];
+                               // Delegate to callback logic? No, just replicate code or trigger callback.
+                               // Simpler to just send message with "View Devices" button or replicate logic.
+                               // Replicating logic is cleaner here to avoid hacking callback structure.
+                               
+                               let ips = state.store_service.get_subscription_active_ips(sub.sub.id).await.unwrap_or_default();
+                               let limit = state.store_service.get_subscription_device_limit(sub.sub.id).await.unwrap_or(0);
+                               
+                               let mut text = format!("📱 *Active Devices for Subscription \\#{:?}*\n", sub.sub.id);
+                               text.push_str(&format!("Limit: `{}/{}` devices\n\n", ips.len(), if limit == 0 { "∞".to_string() } else { limit.to_string() }));
+                               
+                               if ips.is_empty() {
+                                   text.push_str("No active sessions detected in the last 15 minutes\\.");
+                               } else {
+                                   for ip in &ips {
+                                       let time_ago = chrono::Utc::now() - ip.last_seen_at;
+                                       let mins = time_ago.num_minutes();
+                                       text.push_str(&format!("• `{}` \\({} mins ago\\)\n", ip.client_ip.replace(".", "\\."), mins));
+                                   }
+                               }
+
+                               let mut buttons = Vec::new();
+                               if !ips.is_empty() {
+                                   buttons.push(vec![InlineKeyboardButton::callback("☠️ Reset Sessions", format!("kill_sessions_{}", sub.sub.id))]);
+                               }
+                               // No back button needed if command
+                               
+                               let _ = bot.send_message(msg.chat.id, text)
+                                   .parse_mode(ParseMode::MarkdownV2)
+                                   .reply_markup(InlineKeyboardMarkup::new(buttons))
+                                   .await
+                                   .map(|m| {
+                                       let state = state.clone();
+                                       let uid = u.id;
+                                       tokio::spawn(async move {
+                                           let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                                       });
+                                   });
+
+                           } else {
+                               // Multiple subs, show selection
+                               let mut buttons = Vec::new();
+                               for sub in active_subs {
+                                   let label = format!("{} (#{})", sub.plan_name, sub.sub.id);
+                                   buttons.push(vec![InlineKeyboardButton::callback(label, format!("devices_{}", sub.sub.id))]);
+                               }
+                               
+                               let _ = bot.send_message(msg.chat.id, "📱 *Select a subscription to manage active sessions:*")
+                                   .parse_mode(ParseMode::MarkdownV2)
+                                   .reply_markup(InlineKeyboardMarkup::new(buttons))
+                                   .await
+                                   .map(|m| {
+                                       let state = state.clone();
+                                       let uid = u.id;
+                                       tokio::spawn(async move {
+                                           let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                                       });
+                                   });
+                           }
+                      }
+                 }
+            }
+
             "/leaderboard" | "🏆 Leaderboard" => {
                 // Delete command message to keep chat clean
-                let _ = bot.delete_message(msg.chat.id, msg.id).await;
                 use crate::services::referral_service::ReferralService;
 
                 let leaderboard = ReferralService::get_leaderboard(&state.pool, 10).await.unwrap_or_default();

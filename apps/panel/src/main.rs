@@ -43,6 +43,7 @@ pub struct AppState {
     pub export_service: Arc<services::export_service::ExportService>,
     pub channel_trial_service: Arc<services::channel_trial_service::ChannelTrialService>,
     pub notification_service: Arc<services::notification_service::NotificationService>,
+    pub connection_service: Arc<services::connection_service::ConnectionService>, // NEW
     pub redis: Arc<services::redis_service::RedisService>, // NEW
     pub pubsub: Arc<services::pubsub_service::PubSubService>, // NEW
     pub ssh_public_key: String,
@@ -208,6 +209,13 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
         store_service.clone(),
     ));
 
+    // Initialize connection service
+    let connection_service = Arc::new(services::connection_service::ConnectionService::new(
+        pool.clone(),
+        orchestration_service.clone(),
+        store_service.clone(),
+    ));
+
     let pay_token = settings.get_or_default("payment_api_key", "").await;
     let nowpayments_key = settings.get_or_default("nowpayments_key", "").await;
     let crystalpay_login = settings.get_or_default("crystalpay_login", "").await;
@@ -219,6 +227,10 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
     let aaio_merchant_id = settings.get_or_default("aaio_merchant_id", "").await;
     let aaio_secret_1 = settings.get_or_default("aaio_secret_1", "").await;
     let aaio_secret_2 = settings.get_or_default("aaio_secret_2", "").await;
+    
+    let lava_project_id = settings.get_or_default("lava_project_id", "").await;
+    let lava_secret_key = settings.get_or_default("lava_secret_key", "").await;
+
     let is_testnet: String = settings.get_or_default("payment_testnet", "true").await;
     
     let pay_service = Arc::new(services::pay_service::PayService::new(
@@ -235,6 +247,8 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
         aaio_merchant_id,
         aaio_secret_1,
         aaio_secret_2,
+        lava_project_id,
+        lava_secret_key,
         is_testnet == "true",
     ));
 
@@ -242,23 +256,25 @@ async fn run_server(pool: sqlx::SqlitePool, ssh_public_key: String) -> Result<()
     let channel_trial_service = Arc::new(services::channel_trial_service::ChannelTrialService::new(pool.clone()));
     let notification_service = Arc::new(services::notification_service::NotificationService::new(pool.clone()));
 
+    let pubsub = Arc::new(services::pubsub_service::PubSubService::new(redis_url).await.expect("Failed to init PubSub"));
+
     // App state
     let state = AppState {
-        pool,
-        settings,
-        bot_manager,
-
-        store_service,
-        orchestration_service,
-        pay_service,
-        export_service,
+        pool: pool.clone(),
+        settings: settings.clone(),
+        bot_manager: bot_manager.clone(),
+        store_service: store_service.clone(),
+        orchestration_service: orchestration_service.clone(),
+        connection_service: connection_service.clone(),
+        pay_service: pay_service.clone(),
+        export_service: export_service.clone(),
         channel_trial_service,
         notification_service,
-        redis: redis_service, // NEW
-        pubsub: services::pubsub_service::PubSubService::new(redis_url).await.expect("Failed to init PubSub"), // NEW
-        session_secret: std::env::var("SESSION_SECRET").unwrap_or_else(|_| "change-this-secret-immediately".to_string()),
+        redis: redis_service.clone(),
+        pubsub,
         ssh_public_key,
         geo_cache: Arc::new(Mutex::new(HashMap::new())),
+        session_secret: std::env::var("SESSION_SECRET").unwrap_or_else(|_| "secret".to_string()),
     };
     
     // ... rest of function ...
@@ -319,7 +335,8 @@ use tower_http::services::ServeDir;
         // .route("/tools", axum::routing::get(handlers::admin::get_tools_page)) // Removed
         .route("/tools/export", axum::routing::get(handlers::admin::db_export_download))
         .route("/tools/trial-config", axum::routing::post(handlers::admin::update_trial_config))
-        .route("/traffic", axum::routing::get(handlers::admin::get_traffic_analytics)) // NEW
+        .route("/tools/trial-config", axum::routing::post(handlers::admin::update_trial_config))
+        // .route("/traffic", axum::routing::get(handlers::admin::get_traffic_analytics)) // Merged into /analytics
         .route("/logs", axum::routing::get(handlers::admin::get_system_logs_page)) // NEW
         .route("/nodes", axum::routing::get(handlers::admin::get_nodes))
 
@@ -349,7 +366,8 @@ use tower_http::services::ServeDir;
         .route("/users/subs/:id/refund", axum::routing::post(handlers::admin::refund_user_subscription))
         .route("/users/subs/:id/extend", axum::routing::post(handlers::admin::extend_user_subscription))
         .route("/subs/:id/devices", axum::routing::get(handlers::admin::get_subscription_devices))
-        .route("/analytics", axum::routing::get(handlers::admin::analytics))
+        .route("/subs/:id/devices/kill", axum::routing::post(handlers::admin::admin_kill_subscription_sessions))
+        .route("/analytics", axum::routing::get(handlers::admin::get_traffic_analytics))
         
         // Frontend Servers
         .route("/frontends", axum::routing::get(handlers::admin::get_frontends))

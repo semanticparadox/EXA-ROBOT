@@ -183,7 +183,7 @@ impl StoreService {
                 full_name = COALESCE(excluded.full_name, users.full_name),
                 referrer_id = COALESCE(users.referrer_id, excluded.referrer_id),
                 last_seen = CURRENT_TIMESTAMP
-            RETURNING id, tg_id, username, full_name, balance, referral_code, referrer_id, is_banned, language_code, terms_accepted_at, warning_count, trial_used, trial_used_at, created_at, last_seen
+            RETURNING id, tg_id, username, full_name, balance, referral_code, referrer_id, is_banned, language_code, terms_accepted_at, warning_count, trial_used, trial_used_at, last_bot_msg_id, created_at
             "#
         )
         .bind(tg_id)
@@ -223,6 +223,15 @@ impl StoreService {
     pub async fn update_user_language(&self, user_id: i64, lang: &str) -> Result<()> {
         sqlx::query("UPDATE users SET language_code = ? WHERE id = ?")
             .bind(lang)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_last_bot_msg_id(&self, user_id: i64, msg_id: i32) -> Result<()> {
+        sqlx::query("UPDATE users SET last_bot_msg_id = ? WHERE id = ?")
+            .bind(msg_id)
             .bind(user_id)
             .execute(&self.pool)
             .await?;

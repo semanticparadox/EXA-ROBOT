@@ -85,6 +85,11 @@ pub struct PayService {
     aaio_merchant_id: String,
     aaio_secret_1: String,
     aaio_secret_2: String,
+    
+    // Lava.top
+    lava_project_id: String,
+    lava_secret_key: String,
+
     is_testnet: bool,
 }
 
@@ -104,6 +109,8 @@ impl PayService {
         aaio_merchant_id: String,
         aaio_secret_1: String,
         aaio_secret_2: String,
+        lava_project_id: String,
+        lava_secret_key: String,
         is_testnet: bool
     ) -> Self {
         Self { 
@@ -121,6 +128,8 @@ impl PayService {
             aaio_merchant_id,
             aaio_secret_1,
             aaio_secret_2,
+            lava_project_id,
+            lava_secret_key,
             is_testnet 
         }
     }
@@ -500,6 +509,109 @@ impl PayService {
         }
         
         Err(anyhow::anyhow!("Aaio Error"))
+    }
+
+    pub async fn create_lava_invoice(&self, user_id: i64, amount_usd: f64, payment_type: PaymentType) -> Result<String> {
+        info!("Creating Lava.top invoice for user {}: ${}", user_id, amount_usd);
+        
+        let order_id = format!("LAVA-{}-{}", user_id, Utc::now().timestamp());
+        let payload_str = payment_type.to_payload_string(user_id);
+        
+        // Lava API v2 Signature: HMAC-SHA256(json_body, secret_key)
+        // Endpoint: https://api.lava.ru/business/invoice/create
+        // Ensure you have correct structs or use json! macro
+        
+        let json_body = serde_json::json!({
+            "sum": amount_usd,
+            "orderId": order_id,
+            "shopId": self.lava_project_id,
+            "comment": format!("Payment for User {}", user_id),
+            "customFields": payload_str,
+            "expire": 3600
+        });
+        
+        let body_str = serde_json::to_string(&json_body)?;
+        
+        use hmac::{Hmac, Mac};
+        type HmacSha256 = Hmac<sha2::Sha256>;
+        let mut mac = HmacSha256::new_from_slice(self.lava_secret_key.as_bytes())
+            .map_err(|e| anyhow!("Invalid Lava Secret: {}", e))?;
+        mac.update(body_str.as_bytes());
+        let signature = hex::encode(mac.finalize().into_bytes());
+        
+        let client = reqwest::Client::new();
+        let res = client.post("https://api.lava.ru/business/invoice/create")
+            .header("Signature", signature)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(body_str)
+            .send()
+            .await?;
+            
+        #[derive(Deserialize)]
+        struct LavaResponse {
+            data: Option<LavaData>,
+            error: Option<serde_json::Value>
+        }
+        #[derive(Deserialize)]
+        struct LavaData {
+            url: String, 
+            id: String
+        }
+        
+        let lava_res: LavaResponse = res.json().await?;
+        
+        if let Some(data) = lava_res.data {
+            Ok(data.url)
+        } else {
+             Err(anyhow!("Failed to create Lava invoice (No URL returned): {:?}", lava_res.error))
+        }
+    }
+
+    pub async fn create_stars_invoice(&self, user_id: i64, amount_usd: f64, payment_type: PaymentType) -> Result<String> {
+        info!("Creating Telegram Stars invoice for user {}: ${}", user_id, amount_usd);
+        
+        // Rate: 1 USD = 50 Stars (Fixed Assumption for now)
+        let stars_amount = (amount_usd * 50.0).ceil() as i64;
+        
+        let payload = payment_type.to_payload_string(user_id);
+        
+        let client = reqwest::Client::new();
+        let bot_token = self.bot_manager.get_token().await; 
+        if bot_token.is_empty() {
+            return Err(anyhow!("Bot token required for Stars"));
+        }
+
+        let url = format!("https://api.telegram.org/bot{}/createInvoiceLink", bot_token);
+        
+        let params = serde_json::json!({
+            "title": "Balance Top-up",
+            "description": format!("Top-up balance by ${:.2}", amount_usd),
+            "payload": payload,
+            "provider_token": "", // Empty for Stars
+            "currency": "XTR",
+            "prices": [{"label": "Top-up", "amount": stars_amount}]
+        });
+
+        let res = client.post(&url)
+            .json(&params)
+            .send()
+            .await?;
+            
+        #[derive(Deserialize)]
+        struct TgResponse {
+            ok: bool,
+            result: Option<String>,
+            description: Option<String>
+        }
+        
+        let tg_res: TgResponse = res.json().await?;
+        
+        if tg_res.ok && tg_res.result.is_some() {
+            Ok(tg_res.result.unwrap())
+        } else {
+            Err(anyhow!("Failed to create Stars invoice: {:?}", tg_res.description))
+        }
     }
 
     pub async fn handle_webhook(

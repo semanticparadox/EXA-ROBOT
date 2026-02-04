@@ -17,6 +17,7 @@ pub struct User {
     pub warning_count: i32,
     pub trial_used: Option<bool>,
     pub trial_used_at: Option<DateTime<Utc>>,
+    pub last_bot_msg_id: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 

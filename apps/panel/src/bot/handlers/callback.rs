@@ -58,6 +58,13 @@ pub async fn callback_handler(
                             .parse_mode(ParseMode::Html)
                             .reply_markup(main_menu())
                             .await
+                            .map(|m| {
+                                let state = state.clone();
+                                let uid = u.id;
+                                tokio::spawn(async move {
+                                    let _ = state.store_service.update_last_bot_msg_id(uid, m.id.0).await;
+                                });
+                            })
                             .map_err(|e| error!("Failed to send welcome after terms: {}", e));
                         }
                 }
@@ -716,7 +723,80 @@ pub async fn callback_handler(
                     }
             }
 
-            // Store Browsing
+            // DEVICE MANAGEMENT
+            devices if devices.starts_with("devices_") => {
+                 let sub_id = devices.strip_prefix("devices_").unwrap().parse::<i64>().unwrap_or(0);
+                 let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 
+                 if let Some(u) = user_db {
+                      // Verify ownership
+                      let user_subs = state.store_service.get_user_subscriptions(u.id).await.unwrap_or_default();
+                      if let Some(sub_details) = user_subs.iter().find(|s| s.sub.id == sub_id) {
+                          // Get active IPs
+                          let ips = state.store_service.get_subscription_active_ips(sub_id).await.unwrap_or_default();
+                          let limit = state.store_service.get_subscription_device_limit(sub_id).await.unwrap_or(0);
+                          
+                          let mut text = format!("📱 *Active Devices for Subscription \\#{:?}*\n", sub_id);
+                          text.push_str(&format!("Limit: `{}/{}` devices\n\n", ips.len(), if limit == 0 { "∞".to_string() } else { limit.to_string() }));
+                          
+                          if ips.is_empty() {
+                              text.push_str("No active sessions detected in the last 15 minutes\\.");
+                          } else {
+                              for ip in &ips {
+                                  // Mask IP slightly for privacy? Or show full? User owns it.
+                                  // Show time
+                                  let time_ago = chrono::Utc::now() - ip.last_seen_at;
+                                  let mins = time_ago.num_minutes();
+                                  text.push_str(&format!("• `{}` \\({} mins ago\\)\n", ip.client_ip.replace(".", "\\."), mins));
+                              }
+                          }
+
+                          let mut buttons = Vec::new();
+                          if !ips.is_empty() {
+                              buttons.push(vec![InlineKeyboardButton::callback("☠️ Reset Sessions", format!("kill_sessions_{}", sub_id))]);
+                          }
+                          buttons.push(vec![InlineKeyboardButton::callback("🔙 Back", "myservices_page_0")]);
+
+                          if let Some(msg) = q.message {
+                              let _ = bot.edit_message_text(msg.chat().id, msg.id(), text)
+                                  .parse_mode(ParseMode::MarkdownV2)
+                                  .reply_markup(InlineKeyboardMarkup::new(buttons))
+                                  .await;
+                          }
+                      } else {
+                          let _ = bot.answer_callback_query(q.id).text("❌ Subscription not found.").await;
+                      }
+                 }
+                 let _ = bot.answer_callback_query(q.id).await;
+            }
+
+            kill if kill.starts_with("kill_sessions_") => {
+                 let sub_id = kill.strip_prefix("kill_sessions_").unwrap().parse::<i64>().unwrap_or(0);
+                  let user_db = state.store_service.get_user_by_tg_id(tg_id).await.ok().flatten();
+                 
+                 if let Some(u) = user_db {
+                      // Verify ownership
+                      let user_subs = state.store_service.get_user_subscriptions(u.id).await.unwrap_or_default();
+                      if let Some(sub_details) = user_subs.iter().find(|s| s.sub.id == sub_id) {
+                          if let Some(uuid) = &sub_details.sub.vless_uuid {
+                               match state.connection_service.kill_subscription_connections(uuid).await {
+                                   Ok(_) => {
+                                        let _ = bot.answer_callback_query(q.id).text("✅ Sessions reset successfully!").show_alert(true).await;
+                                        // Update the message to remove "Kill" button or showing refreshed list
+                                        if let Some(msg) = q.message {
+                                            // Trigger refresh by sending "devices_" callback essentially?
+                                            // Easier to just edit text.
+                                            let _ = bot.send_message(msg.chat().id, "✅ *Sessions Reset*\\n\\nPlease wait a few moments for connections to close\\.").parse_mode(ParseMode::MarkdownV2).await;
+                                        }
+                                   }
+                                   Err(e) => {
+                                       let _ = bot.answer_callback_query(q.id).text(format!("❌ Error: {}", e)).show_alert(true).await;
+                                   }
+                               }
+                          }
+                      }
+                 }
+            }
             store if store.starts_with("store_") => {
                 let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
                 if chat_id.0 == 0 { return Ok(()); } // Safety

@@ -180,11 +180,28 @@
     async function loadFrontends() {
         try {
             const response = await fetch('/api/admin/frontends');
-            const frontends = await response.json();
+
+            if (!response.ok) {
+                // If it's a 4xx/5xx, try to read text or default error
+                const errText = await response.text();
+                throw new Error(errText || `Server returned ${response.status}`);
+            }
+
+            // Check if response has content
+            const txt = await response.text();
+            let frontends = [];
+            if (txt && txt.trim().length > 0) {
+                try {
+                    frontends = JSON.parse(txt);
+                } catch (e) {
+                    console.error("Invalid JSON:", txt);
+                    throw new Error("Invalid response from server");
+                }
+            }
 
             const tbody = document.getElementById('frontendsTableBody');
 
-            if (frontends.length === 0) {
+            if (!frontends || frontends.length === 0) {
                 tbody.innerHTML = `
                 <tr>
                     <td colspan="7" class="px-6 py-16 text-center text-slate-500">
