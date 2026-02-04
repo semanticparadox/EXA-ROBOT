@@ -337,7 +337,6 @@ use tower_http::services::ServeDir;
         // .route("/tools", axum::routing::get(handlers::admin::get_tools_page)) // Removed
         .route("/tools/export", axum::routing::get(handlers::admin::db_export_download))
         .route("/tools/trial-config", axum::routing::post(handlers::admin::update_trial_config))
-        .route("/tools/trial-config", axum::routing::post(handlers::admin::update_trial_config))
         // .route("/traffic", axum::routing::get(handlers::admin::get_traffic_analytics)) // Merged into /analytics
         .route("/logs", axum::routing::get(handlers::admin::get_system_logs_page)) // NEW
         .route("/nodes", axum::routing::get(handlers::admin::get_nodes))
