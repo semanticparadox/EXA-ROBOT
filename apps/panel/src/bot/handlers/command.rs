@@ -196,16 +196,16 @@ pub async fn message_handler(
                     Use the menu below to manage your VPN subscriptions and digital goods.",
                     user_name
                 );
+                let bot_for_task = bot.clone();
+                let state_for_task = state.clone();
                 let _ = bot.send_message(msg.chat.id, welcome_text)
                     .parse_mode(ParseMode::Html)
                     .reply_markup(main_menu())
                     .await
                     .map(move |m| {
-                        let state = state.clone();
-                        let bot = bot.clone();
                         let uid = user.id;
                         tokio::spawn(async move {
-                            register_bot_message(bot, &state, uid, &m).await;
+                            register_bot_message(bot_for_task, &state_for_task, uid, &m).await;
                         });
                     })
                     .map_err(|e| error!("Failed to send welcome on /start: {}", e));
