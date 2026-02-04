@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::AppState;
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use tracing::{info, error};
-use crate::filters;
+use crate::utils;
 
 #[derive(Template)]
 #[template(path = "setup.html")]

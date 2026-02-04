@@ -9,11 +9,11 @@ use crate::models::node::Node;
 use crate::models::store::{Plan, User, Order};
 use crate::services::logging_service::LoggingService;
 use std::collections::HashMap;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use axum::extract::Query;
 use time::Duration;
-use crate::filters; // Make filters available for templates
+use crate::utils; // Renamed from filters to avoid shadowing Askama's filters
 // But `cookie.set_max_age` takes `time::Duration`.
 // If I search codebase for `Duration`?
 // I will try to use `time::Duration` fully qualified if I can add it, but I can't add crates.
