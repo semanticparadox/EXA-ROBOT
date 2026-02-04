@@ -10,10 +10,26 @@ use crate::models::store::{Plan, User, Order};
 use crate::services::logging_service::LoggingService;
 use std::collections::HashMap;
 use tracing::{info, error, warn};
+use tracing::{info, error, warn};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
+use axum::extract::Query;
+use time::Duration; // Assuming time crate is present, or we need to add it. 
+// If time is not directly dependent, we might need `use cookie::time::Duration`? 
+// No, error said "use cargo add time".
+// I'll try to just remove the `time::` prefix if I import it, OR if I can't import it, I need to know where it comes from. Kinda weird.
+// Let's assume I can't simple `use time::Duration` if it's not in Cargo.toml.
+// But `cookie.set_max_age` takes `time::Duration`.
+// If I search codebase for `Duration`?
+// I will try to use `time::Duration` fully qualified if I can add it, but I can't add crates.
+// Wait, `axum_extra` depends on `cookie`, which depends on `time`.
+// I can try to use `cookie::time::Duration` if `cookie` is dependencies.
+// Or just `cookie::time::Duration`.
+// Actually, let's fix the imports I KNOW are wrong.
+
 
 // Helper: Get authenticated username
-async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<String> {
+// Helper: Get authenticated username
+pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<String> {
     if let Some(cookie) = jar.get("admin_session") {
         let token = cookie.value();
         // Check Redis
@@ -294,6 +310,7 @@ pub struct LoginTemplate {
     pub admin_path: String,
     pub is_auth: bool,
     pub active_page: String,
+    pub username: String, // NEW - needed even if empty for base.html compatibility?
 }
 
 #[derive(Template)]
@@ -313,6 +330,7 @@ pub struct AnalyticsTemplate {
     pub is_auth: bool,
     pub admin_path: String,
     pub active_page: String,
+    pub username: String, // NEW
 }
 
 pub struct UserWithTraffic {
@@ -414,6 +432,7 @@ pub async fn get_login() -> impl IntoResponse {
         admin_path,
         is_auth: false,
         active_page: "login".to_string(),
+        username: "".to_string(),
     }.render().unwrap())
 }
 
@@ -505,7 +524,7 @@ pub async fn logout(jar: CookieJar) -> impl IntoResponse {
     let mut cookie = Cookie::from("admin_session");
     cookie.set_value("");
     cookie.set_path("/");
-    cookie.set_max_age(time::Duration::seconds(0)); // Expire immediately
+    cookie.set_max_age(Duration::seconds(0)); // Expire immediately
     
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
@@ -1926,7 +1945,10 @@ pub async fn activate_node(
     }
 }
 
-pub async fn get_traffic_analytics(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn get_traffic_analytics(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> impl IntoResponse {
     let now = chrono::Utc::now();
     let _thirty_days_ago = now - chrono::Duration::days(30);
 
@@ -1961,6 +1983,9 @@ pub async fn get_traffic_analytics(State(state): State<AppState>) -> impl IntoRe
         is_auth: true,
         admin_path,
         active_page: "analytics".to_string(),
+        username: get_auth_user(&state, &jar).await.unwrap_or("Admin".to_string()),
+        // Analytics might be public? No, it's admin. But handler signature `get_traffic_analytics` at 1922 needs `jar`.
+        // I need to update handler signature too.
     };
     Html(template.render().unwrap())
 }

@@ -3,6 +3,8 @@ use axum::{
     response::{IntoResponse, Html},
     body::Bytes,
 };
+use axum_extra::extract::cookie::CookieJar;
+use crate::handlers::admin::get_auth_user;
 use askama::Template;
 use serde::Deserialize;
 use crate::AppState;
@@ -19,10 +21,15 @@ pub struct NodeInboundsTemplate {
     pub is_auth: bool,
     pub admin_path: String,
     pub active_page: String,
+    pub username: String, // NEW
 }
 
 pub async fn get_node_inbounds(
     State(state): State<AppState>,
+    Path(node_id): Path<i64>,
+pub async fn get_node_inbounds(
+    State(state): State<AppState>,
+    jar: CookieJar,
     Path(node_id): Path<i64>,
 ) -> impl IntoResponse {
     let node_res = sqlx::query_as::<_, Node>("SELECT * FROM nodes WHERE id = ?")
@@ -47,6 +54,7 @@ pub async fn get_node_inbounds(
                     if p.starts_with('/') { p } else { format!("/{}", p) }
                 },
                 active_page: "nodes".to_string(),
+                username: get_auth_user(&state, &jar).await.unwrap_or("Admin".to_string()),
             };
             Html(template.render().unwrap_or_default()).into_response()
         },
@@ -180,6 +188,7 @@ pub struct PlanBindingsTemplate {
     pub is_auth: bool,
     pub admin_path: String,
     pub active_page: String,
+    pub username: String, // NEW
 }
 
 pub struct NodeBindingGroup {
@@ -195,6 +204,10 @@ pub struct InboundBindingItem {
 
 pub async fn get_plan_bindings(
     State(state): State<AppState>,
+    Path(plan_id): Path<i64>,
+pub async fn get_plan_bindings(
+    State(state): State<AppState>,
+    jar: CookieJar,
     Path(plan_id): Path<i64>,
 ) -> impl IntoResponse {
     // 1. Fetch Plan
@@ -237,7 +250,8 @@ pub async fn get_plan_bindings(
 
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
-    Html(PlanBindingsTemplate { plan, bindings, is_auth: true, admin_path, active_page: "plans".to_string() }.render().unwrap_or_default()).into_response()
+    let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
+    Html(PlanBindingsTemplate { plan, bindings, is_auth: true, admin_path, active_page: "plans".to_string(), username: get_auth_user(&state, &jar).await.unwrap_or("Admin".to_string()) }.render().unwrap_or_default()).into_response()
 }
 
 pub async fn save_plan_bindings(

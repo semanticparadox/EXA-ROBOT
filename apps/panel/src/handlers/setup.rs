@@ -15,6 +15,7 @@ pub struct SetupTemplate {
     pub admin_path: String,
     pub is_auth: bool,
     pub active_page: String,
+    pub username: String, // NEW
 }
 
 #[derive(Deserialize)]
@@ -31,6 +32,7 @@ pub async fn get_setup() -> impl IntoResponse {
         admin_path,
         is_auth: false,
         active_page: "setup".to_string(),
+        username: "".to_string(),
     }.render().unwrap_or_default())
 }
 
