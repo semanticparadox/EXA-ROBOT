@@ -395,7 +395,9 @@ pub async fn message_handler(
             "📦 Digital Store" => {
                         let categories = state.store_service.get_categories().await.unwrap_or_default();
                     if categories.is_empty() {
-                        let _ = bot.send_message(msg.chat.id, "❌ The store is currently empty.").await;
+                        let _ = bot.send_message(msg.chat.id, "❌ The store is currently empty.")
+                            .reply_markup(main_menu())
+                            .await;
                     } else {
                         let mut buttons = Vec::new();
                         for cat in categories {
@@ -458,7 +460,9 @@ pub async fn message_handler(
                 let plans = state.store_service.get_active_plans().await.unwrap_or_default();
                 
                 if plans.is_empty() {
-                    let _ = bot.send_message(msg.chat.id, "❌ No active plans available at the moment.").await;
+                    let _ = bot.send_message(msg.chat.id, "❌ No active plans available at the moment.")
+                        .reply_markup(main_menu())
+                        .await;
                 } else {
                     let total_plans = plans.len();
                     let index = 0;
@@ -734,7 +738,9 @@ pub async fn message_handler(
                 let support_username = state.settings.get_or_default("support_url", "").await;
                 
                 if support_username.is_empty() {
-                        let _ = bot.send_message(msg.chat.id, "❌ Support contact is not configured yet.").await;
+                        let _ = bot.send_message(msg.chat.id, "❌ Support contact is not configured yet.")
+                            .reply_markup(main_menu())
+                            .await;
                 } else {
                     // Sanitize username (remove @ if present)
                     let clean_username = support_username.trim_start_matches('@');
@@ -758,7 +764,9 @@ pub async fn message_handler(
                            let active_subs: Vec<_> = subs.into_iter().filter(|s| s.sub.status == "active").collect();
                            
                            if active_subs.is_empty() {
-                               let _ = bot.send_message(msg.chat.id, "❌ You have no active subscriptions.").await;
+                               let _ = bot.send_message(msg.chat.id, "❌ You have no active subscriptions.")
+                                   .reply_markup(main_menu())
+                                   .await;
                            } else if active_subs.len() == 1 {
                                // Auto-show active devices for the only subscription
                                let sub = &active_subs[0];
