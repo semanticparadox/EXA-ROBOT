@@ -1,9 +1,9 @@
 -- ================================================
 -- EXA ROBOT - Consolidated Database Schema
--- Version: 2026-02-01
+-- Version: 2026-02-05 (Unified Init)
 -- ================================================
 -- This single file contains ALL tables and features
--- Previously split across migrations 001-016
+-- for a fresh installation.
 -- ================================================
 
 -- ================================================
@@ -131,6 +131,9 @@ CREATE TABLE IF NOT EXISTS users (
     terms_accepted_at DATETIME,
     warning_count INTEGER DEFAULT 0,
     
+    -- Bot History Tracking
+    last_bot_msg_id INTEGER,
+    
     FOREIGN KEY (referrer_id) REFERENCES users(id)
 );
 
@@ -140,6 +143,20 @@ CREATE INDEX IF NOT EXISTS idx_users_referrer_id ON users (referrer_id);
 CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
 CREATE INDEX IF NOT EXISTS idx_users_channel_verified ON users(channel_member_verified);
 CREATE INDEX IF NOT EXISTS idx_users_trial_source ON users(trial_source);
+
+-- ================================================
+-- BOT CHAT HISTORY
+-- ================================================
+
+CREATE TABLE IF NOT EXISTS bot_chat_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL references users(id) ON DELETE CASCADE,
+    chat_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_chat_history_user_created ON bot_chat_history(user_id, created_at);
 
 -- ================================================
 -- STORE & SUBSCRIPTIONS
