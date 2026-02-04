@@ -12,7 +12,7 @@ use crate::models::node::Node;
 use crate::models::network::Inbound;
 use crate::models::store::Plan;
 use tracing::{info, error};
-use crate::utils::format_bytes;
+use tracing::{info, error};
 
 
 #[derive(Template)]

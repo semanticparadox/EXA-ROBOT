@@ -10,6 +10,7 @@ pub fn format_bytes_str(bytes: u64) -> String {
 }
 
 // Helper for Askama templates (must match filter signature)
+#[allow(dead_code)]
 pub fn format_bytes(s: &i64) -> Result<String> {
     Ok(format_bytes_str(*s as u64))
 }
