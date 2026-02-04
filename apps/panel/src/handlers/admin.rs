@@ -13,7 +13,8 @@ use tracing::{info, error};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use axum::extract::Query;
 use time::Duration;
-use crate::utils; // Renamed from filters to avoid shadowing Askama's filters
+use askama::filters; // Resolve built-in filters like | default
+use crate::utils::format_bytes; // Resolve custom filter
 // But `cookie.set_max_age` takes `time::Duration`.
 // If I search codebase for `Duration`?
 // I will try to use `time::Duration` fully qualified if I can add it, but I can't add crates.
