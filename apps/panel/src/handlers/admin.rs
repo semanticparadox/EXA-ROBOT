@@ -13,8 +13,9 @@ use tracing::{info, error};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use axum::extract::Query;
 use time::Duration;
-use time::Duration;
-// Filters are automatically loaded from crate::filters
+use crate::filters; // Resolve built-in filters (like | default) AND custom filters
+use crate::filters::format_bytes; // Import explicit function for local usage
+
 
 // But `cookie.set_max_age` takes `time::Duration`.
 // If I search codebase for `Duration`?
