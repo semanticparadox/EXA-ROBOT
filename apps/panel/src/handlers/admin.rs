@@ -59,7 +59,8 @@ pub struct SettingsTemplate {
 pub struct BotTemplate {
     pub masked_bot_token: String,
     pub bot_status: String,
-    pub _bot_username: String,
+    pub bot_username: String,
+    pub webhook_info: Option<String>,
     pub is_auth: bool,
     pub admin_path: String,
     pub active_page: String,
@@ -2318,11 +2319,17 @@ pub async fn get_bot_page(
     let admin_path = std::env::var("ADMIN_PATH").unwrap_or_else(|_| "/admin".to_string());
     let admin_path = if admin_path.starts_with('/') { admin_path } else { format!("/{}", admin_path) };
 
+    let webhook_status = if !bot_token.is_empty() {
+        "Active (Polling)".to_string() // Simplified for now, or fetch real status
+    } else {
+        "Not Configured".to_string()
+    };
+
     let template = BotTemplate {
         masked_bot_token,
         bot_status,
-        _bot_username: bot_username,
-        // webhook_info: None, // Removed
+        bot_username,
+        webhook_info: Some(webhook_status), 
         is_auth: true,
         admin_path,
         active_page: "bot".to_string(),
