@@ -83,6 +83,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 
 <body class="bg-slate-950 text-slate-50 font-sans antialiased selection:bg-indigo-500/30">
@@ -351,10 +352,27 @@
         // Re-init icons after HTMX swaps
         document.body.addEventListener('htmx:afterOnLoad', function (evt) {
             lucide.createIcons();
+            initTimeAgo();
             if (evt.detail.xhr.status === 200 && (evt.detail.elt.id === "settings-form" || evt.detail.elt.hasAttribute("hx-post"))) {
                 showToast("Action completed successfully!");
             }
         });
+
+        function initTimeAgo() {
+            document.querySelectorAll('.time-ago').forEach(el => {
+                const date = new Date(el.getAttribute('data-time'));
+                const now = new Date();
+                const diff = Math.floor((now - date) / 1000);
+                if (isNaN(diff)) return;
+                let text = "";
+                if (diff < 60) text = "Just now";
+                else if (diff < 3600) text = Math.floor(diff / 60) + "m ago";
+                else if (diff < 86400) text = Math.floor(diff / 3600) + "h ago";
+                else text = Math.floor(diff / 86400) + "d ago";
+                el.innerText = text;
+            });
+        }
+        initTimeAgo();
 
         // Toast Function
         function showToast(message) {
