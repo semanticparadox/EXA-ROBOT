@@ -11,7 +11,7 @@ Cargo.lock
 *.sql.backup
 *.sqlite
 *.sqlite3
-
+/docs
 # Environment Files
 .env
 .env.local
