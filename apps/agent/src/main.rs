@@ -184,11 +184,6 @@ async fn main() -> anyhow::Result<()> {
             if let Err(e) = fetch_global_settings(&client, &panel_url, &token, &mut state).await {
                 error!("Failed to fetch settings: {}", e);
             }
-            
-            // Fetch Global Settings (Kill Switch / Decoy)
-            if let Err(e) = fetch_global_settings(&client, &panel_url, &token, &mut state).await {
-                error!("Failed to fetch settings: {}", e);
-            }
 
             // SNI Health Check
             if let Some(current_sni) = sni_check::get_current_sni(&args.config_path).await {
@@ -206,23 +201,6 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-        }
-        }
-        
-        // KILL SWITCH MONITOR
-        if state.kill_switch_enabled && !state.vpn_stopped_by_kill_switch {
-            if state.last_successful_contact.elapsed().as_secs() > state.kill_switch_timeout {
-                warn!("⚠️ EMERGENCY KILL SWITCH TRIGGERED! Lost connection for {}s (Timeout: {}s)", 
-                    state.last_successful_contact.elapsed().as_secs(), state.kill_switch_timeout);
-                
-                if let Err(e) = stop_singbox() {
-                    error!("❌ FAILED TO STOP VPN SERVICE: {}", e);
-                } else {
-                    state.vpn_stopped_by_kill_switch = true;
-                    warn!("💀 VPN Service has been terminated.");
-                }
-            }
-        }
         }
         
         // KILL SWITCH MONITOR
