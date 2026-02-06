@@ -121,9 +121,6 @@ async fn main() -> anyhow::Result<()> {
                         state.vpn_stopped_by_kill_switch = false;
                     }
                 }
-                failures = 0;
-                state.last_successful_contact = std::time::Instant::now(); // Update contact time
-
                 info!("💓 Heartbeat OK. Action: {:?}", resp.action);
                 
                 // Check if config update needed
