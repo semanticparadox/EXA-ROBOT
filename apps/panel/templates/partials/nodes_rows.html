@@ -57,7 +57,7 @@
         {% if let Some(ls) = node.last_seen %}
         <div class="flex flex-col gap-1">
             <span class="text-xs text-slate-300 font-medium time-ago" data-time="{{ ls }}">{{ ls }}</span>
-            <span class="text-[10px] text-slate-500 font-mono opacity-50">{{ ls|date:"%H:%M" }}</span>
+            <span class="text-[10px] text-slate-500 font-mono opacity-50">{{ ls.format("%H:%M") }}</span>
         </div>
         {% else %}
         <span class="text-xs text-slate-600 font-medium">Never connected</span>

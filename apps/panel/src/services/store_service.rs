@@ -1031,11 +1031,13 @@ impl StoreService {
                 // Parse stream settings to find SNI/Security
                 use crate::models::network::{StreamSettings};
                 let stream: StreamSettings = serde_json::from_str(&inbound.stream_settings).unwrap_or(StreamSettings {
-                    network: "tcp".to_string(),
-                    security: "none".to_string(),
+                    network: Some("tcp".to_string()),
+                    security: Some("none".to_string()),
                     tls_settings: None,
                     reality_settings: None,
                 });
+                let security = stream.security.as_deref().unwrap_or("none");
+                let network = stream.network.as_deref().unwrap_or("tcp");
 
                 let (address, reality_pub, short_id) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
                     // We need the Node's public IP and Reality Key
@@ -1070,9 +1072,9 @@ impl StoreService {
                     "vless" => {
                         // vless://uuid@ip:port?security=...&sni=...&fp=...&type=...#remark
                         let mut params = Vec::new();
-                        params.push(format!("security={}", stream.security));
+                        params.push(format!("security={}", security));
                         
-                        if stream.security == "reality" {
+                        if security == "reality" {
                             if let Some(reality) = stream.reality_settings {
                                 params.push(format!("sni={}", reality.server_names.first().cloned().unwrap_or_default()));
                                 params.push(format!("pbk={}", reality_pub.unwrap_or_default())); 
@@ -1081,17 +1083,17 @@ impl StoreService {
                                 }
                                 params.push("fp=chrome".to_string());
                             }
-                        } else if stream.security == "tls" {
+                        } else if security == "tls" {
                             if let Some(tls) = stream.tls_settings {
                                 params.push(format!("sni={}", tls.server_name));
                             }
                         }
                         
-                        params.push(format!("type={}", stream.network));
+                        params.push(format!("type={}", network));
                         
-                        if stream.network == "tcp" {
+                        if network == "tcp" {
                              params.push("headerType=none".to_string());
-                             if stream.security == "reality" {
+                             if security == "reality" {
                                  params.push("flow=xtls-rprx-vision".to_string());
                              }
                         }
@@ -1169,11 +1171,13 @@ impl StoreService {
             for inbound in inbounds {
                 use crate::models::network::{StreamSettings, InboundType};
                 let stream: StreamSettings = serde_json::from_str(&inbound.stream_settings).unwrap_or(StreamSettings {
-                    network: "tcp".to_string(),
-                    security: "none".to_string(),
+                    network: Some("tcp".to_string()),
+                    security: Some("none".to_string()),
                     tls_settings: None,
                     reality_settings: None,
                 });
+                let security = stream.security.as_deref().unwrap_or("none");
+                let network = stream.network.as_deref().unwrap_or("tcp");
 
                 let (address, reality_pub) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
                     let node_details: Option<(String, Option<String>)> = sqlx::query_as("SELECT ip, reality_pub FROM nodes WHERE id = ?")
@@ -1194,7 +1198,7 @@ impl StoreService {
 
                 match inbound.protocol.as_str() {
                     "vless" => {
-                        if stream.security == "reality" {
+                        if security == "reality" {
                             if let Some(reality) = stream.reality_settings {
                                 let names = if reality.server_names.is_empty() {
                                     vec!["".to_string()]
@@ -1236,7 +1240,7 @@ impl StoreService {
                         } else {
                              // Standard TLS or None
                              let mut tls_config = None;
-                             if stream.security == "tls" {
+                             if security == "tls" {
                                  if let Some(tls) = stream.tls_settings {
                                      tls_config = Some(ClientTlsConfig {
                                          enabled: true,
@@ -1396,11 +1400,13 @@ impl StoreService {
                 // Parse stream settings to find SNI/Security
                 use crate::models::network::{StreamSettings};
                 let stream: StreamSettings = serde_json::from_str(&inbound.stream_settings).unwrap_or(StreamSettings {
-                    network: "tcp".to_string(),
-                    security: "none".to_string(),
+                    network: Some("tcp".to_string()),
+                    security: Some("none".to_string()),
                     tls_settings: None,
                     reality_settings: None,
                 });
+                let security = stream.security.as_deref().unwrap_or("none");
+                let network = stream.network.as_deref().unwrap_or("tcp");
 
                 let (address, reality_pub) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
                     // We need the Node's public IP and Reality Key
@@ -1430,25 +1436,25 @@ impl StoreService {
                     "vless" => {
                         // vless://uuid@ip:port?security=...&sni=...&fp=...&type=...#remark
                         let mut params = Vec::new();
-                        params.push(format!("security={}", stream.security));
+                        params.push(format!("security={}", security));
                         
-                        if stream.security == "reality" {
+                        if security == "reality" {
                             if let Some(reality) = stream.reality_settings {
                                 params.push(format!("sni={}", reality.server_names.first().cloned().unwrap_or_default()));
                                 params.push(format!("pbk={}", reality_pub.unwrap_or_default())); 
                                 params.push("fp=chrome".to_string());
                             }
-                        } else if stream.security == "tls" {
+                        } else if security == "tls" {
                             if let Some(tls) = stream.tls_settings {
                                 params.push(format!("sni={}", tls.server_name));
                             }
                         }
                         
-                        params.push(format!("type={}", stream.network));
+                        params.push(format!("type={}", network));
                         
-                        if stream.network == "tcp" {
+                        if network == "tcp" {
                              params.push("headerType=none".to_string());
-                             if stream.security == "reality" {
+                             if security == "reality" {
                                  params.push("flow=xtls-rprx-vision".to_string());
                              }
                         }
@@ -1459,15 +1465,14 @@ impl StoreService {
                     "hysteria2" => {
                         // hysteria2://user:password@ip:port?sni=...&insecure=1#remark
                         let mut params = Vec::new();
-                        if stream.security == "tls" {
+                        if security == "tls" {
                             let mut use_insecure = true;
                             if let Some(tls) = stream.tls_settings {
-                                params.push(format!("sni={}", tls.server_name));
-                                // Heuristic: If SNI is not the default generic one, assume user has a valid cert and wants verification.
-                                // "drive.google.com" is our default for self-signed.
-                                if tls.server_name != "drive.google.com" && tls.server_name != "www.yahoo.com" {
-                                    use_insecure = false;
+                                match tls.server_name.as_str() {
+                                    "drive.google.com" | "www.yahoo.com" => {}, // Do nothing, keep insecure=true
+                                    _ => { use_insecure = false; }
                                 }
+                                params.push(format!("sni={}", tls.server_name));
                             }
                             params.push(format!("insecure={}", if use_insecure { "1" } else { "0" }));
                         } else {

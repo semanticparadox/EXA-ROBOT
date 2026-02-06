@@ -1,5 +1,5 @@
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, ParseMode, MessageId};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, ParseMode};
 use tracing::{info, error};
 use crate::AppState;
 use crate::bot::utils::{escape_md, check_channel_membership, get_trial_days, register_bot_message};
