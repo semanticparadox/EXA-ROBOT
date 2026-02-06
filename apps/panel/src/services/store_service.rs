@@ -1177,7 +1177,7 @@ impl StoreService {
                     reality_settings: None,
                 });
                 let security = stream.security.as_deref().unwrap_or("none");
-                let network = stream.network.as_deref().unwrap_or("tcp");
+                let _network = stream.network.as_deref().unwrap_or("tcp");
 
                 let (address, reality_pub) = if inbound.listen_ip == "::" || inbound.listen_ip == "0.0.0.0" {
                     let node_details: Option<(String, Option<String>)> = sqlx::query_as("SELECT ip, reality_pub FROM nodes WHERE id = ?")
